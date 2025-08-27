@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Focus Warmup</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="popup">
+      <header>
+        <div class="title">Focus Warmup</div>
+        <div class="subtitle">From distraction to deep work</div>
+      </header>
+
+      <div id="onboardingCard" class="card">
+        <div class="section">
+          <div class="section-title">Active Sites</div>
+          <div class="site-grid" id="activeSites">
+            <!-- Sites will be populated by JavaScript -->
+          </div>
+          <div class="custom-add">
+            <input type="text" id="customSiteInput" placeholder="Add site (e.g., hulu.com)" />
+            <button id="addCustomSite" class="btn-add">Add</button>
+          </div>
+
+        </div>
+        
+        <div class="section">
+          <div class="section-title">Active Topics</div>
+          <div class="topic-grid" id="activeTopics">
+            <!-- Topics will be populated by JavaScript -->
+          </div>
+          <div class="custom-add">
+            <input type="text" id="customTopicInput" placeholder="Add topic (e.g., Machine Learning)" />
+            <button id="addCustomTopic" class="btn-add">Add</button>
+          </div>
+        </div>
+        
+        <div class="actions">
+          <button id="saveBtn">Save</button>
+          <button id="openHistory" class="secondary">Learning History</button>
+          <button id="openOptions" class="secondary">Settings</button>
+        </div>
+      </div>
+
+      <div class="muted">Tip: You can change everything later in Settings.</div>
+    </div>
+
+    <script src="../utils/storage.js"></script>
+    <script src="popup.js"></script>
+  </body>
+  </html>
+
+

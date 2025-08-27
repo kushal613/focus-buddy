@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Focus Warmup – Learning History</title>
+    <link rel="stylesheet" href="history.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Learning History</h1>
+        <p class="tagline">Your micro-learning conversations</p>
+      </header>
+
+      <!-- Date Selection -->
+      <div class="date-selector">
+        <div class="date-controls">
+          <button id="prevDay" class="date-btn">←</button>
+          <div class="date-display">
+            <span id="selectedDate">Today</span>
+            <button id="calendarToggle" class="calendar-toggle">📅</button>
+          </div>
+          <button id="nextDay" class="date-btn">→</button>
+        </div>
+        <div id="calendar" class="calendar" style="display: none;">
+          <div class="calendar-header">
+            <button id="prevMonth" class="month-btn">‹</button>
+            <span id="currentMonth">August 2025</span>
+            <button id="nextMonth" class="month-btn">›</button>
+          </div>
+          <div class="calendar-grid">
+            <div class="calendar-weekdays">
+              <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+            </div>
+            <div id="calendarDays" class="calendar-days">
+              <!-- Calendar days will be populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+            <!-- Enhanced Stats Grid -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-number" id="totalSessions">0</div>
+          <div class="stat-label">Total Sessions</div>
+          <div class="stat-subtitle">Popups interacted with</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <div class="stat-number" id="tasksCompleted">0</div>
+          <div class="stat-label">Tasks Completed</div>
+          <div class="stat-subtitle">MCQs & micro-tasks solved</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⏱️</div>
+          <div class="stat-number" id="avgFocusTime">0m</div>
+          <div class="stat-label">Avg Focus Time</div>
+          <div class="stat-subtitle">Before returning to distraction</div>
+        </div>
+      </div>
+
+      <!-- Site Distribution Chart -->
+      <div class="chart-section">
+        <h3>Time Spent on Distracting Sites</h3>
+        <div class="chart-container">
+          <canvas id="siteChart" width="300" height="300"></canvas>
+          <div id="chartTooltip" class="chart-tooltip" style="display: none;">
+            <div class="tooltip-site"></div>
+            <div class="tooltip-percentage"></div>
+            <div class="tooltip-duration"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <input type="text" id="searchInput" placeholder="Search conversations..." />
+        <select id="topicFilter">
+          <option value="">All Topics</option>
+        </select>
+        <select id="siteFilter">
+          <option value="">All Sites</option>
+        </select>
+      </div>
+
+      <div class="history-container">
+        <div id="historyList" class="history-list">
+          <!-- History items will be populated by JavaScript -->
+        </div>
+        
+        <div id="emptyState" class="empty-state" style="display: none;">
+          <div class="empty-icon">📚</div>
+          <h3>No learning history for this date</h3>
+          <p>Complete micro-tasks on distraction sites to start building your learning journal.</p>
+        </div>
+      </div>
+
+      <div class="export-section">
+        <button id="exportBtn" class="btn-secondary">Export Learning Data</button>
+        <button id="clearBtn" class="btn-danger">Clear All History</button>
+      </div>
+    </div>
+
+    <script src="../utils/storage.js"></script>
+    <script src="history.js"></script>
+  </body>
+</html>

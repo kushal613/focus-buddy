@@ -1,0 +1,23 @@
+📚 PDF AI Backend running on http://localhost:3132
+🔑 OpenAI configured: true
+
+Endpoints:
+  POST /upload - Upload PDF
+  POST /prompt - Generate teaching prompts
+  GET /status - Check PDF status
+📄 Processing PDF: NE Outline:Key Terms 4.pdf
+📝 Created 1 text chunks
+🧠 Generated embeddings for 1 chunks
+🔍 Found 1 relevant chunks for: explain a concept from 
+🔍 Found 1 relevant chunks for: explain a concept from 
+Error: Only PDF files are allowed
+    at fileFilter (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/server.js:29:10)
+    at wrappedFileFilter (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/multer/index.js:44:7)
+    at Multipart.<anonymous> (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/multer/lib/make-middleware.js:109:7)
+    at Multipart.emit (node:events:518:28)
+    at HeaderParser.cb (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/busboy/lib/types/multipart.js:358:14)
+    at HeaderParser.push (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/busboy/lib/types/multipart.js:162:20)
+    at SBMH.ssCb [as _cb] (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/busboy/lib/types/multipart.js:394:37)
+    at feed (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/streamsearch/lib/sbmh.js:219:14)
+    at SBMH.push (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/streamsearch/lib/sbmh.js:104:16)
+    at Multipart._write (/Users/kushalmungee/Desktop/Extension/pdf-ai-backend/node_modules/busboy/lib/types/multipart.js:567:19)

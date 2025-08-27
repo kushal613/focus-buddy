@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Focus Warmup – Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>Focus Warmup</h1>
+        <p class="tagline">Gently transition from distraction to deep work.</p>
+      </header>
+
+      <main>
+        <section class="card space-stack" id="welcome">
+          <h2>Welcome</h2>
+          <p>Configure your distraction sites, topics, and timer. These settings sync to your Chrome profile.</p>
+        </section>
+
+        <section class="card space-stack" id="sites">
+          <h2>Distraction Sites</h2>
+          <div class="row">
+            <div class="col">
+              <h3>Common distractions</h3>
+              <div class="checkbox-grid">
+                <label><input type="checkbox" class="common-site" data-host="facebook.com" /> <span>Facebook</span></label>
+                <label><input type="checkbox" class="common-site" data-host="instagram.com" /> <span>Instagram</span></label>
+                <label><input type="checkbox" class="common-site" data-host="tiktok.com" /> <span>TikTok</span></label>
+                <label><input type="checkbox" class="common-site" data-host="youtube.com" /> <span>YouTube</span></label>
+                <label><input type="checkbox" class="common-site" data-host="twitter.com" /> <span>X (Twitter)</span></label>
+                <label><input type="checkbox" class="common-site" data-host="pinterest.com" /> <span>Pinterest</span></label>
+                <label><input type="checkbox" class="common-site" data-host="amazon.com" /> <span>Amazon</span></label>
+                <label><input type="checkbox" class="common-site" data-host="ebay.com" /> <span>eBay</span></label>
+              </div>
+            </div>
+            <div class="col">
+              <h3>Add custom</h3>
+              <div class="custom-add">
+                <input type="text" id="customSiteInput" placeholder="domain.com" />
+                <button id="addCustomSite" class="btn-secondary">Add</button>
+              </div>
+              <ul id="customSiteList" class="custom-list"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="card space-stack" id="security">
+          <h2>Password Lock (Optional)</h2>
+          <label>
+            <input type="checkbox" id="passwordEnabled" /> Require password to edit settings
+          </label>
+          <input type="password" id="passwordValue" placeholder="Set a password" />
+        </section>
+
+        <section class="card space-stack" id="topics">
+          <h2>Study Topics / Resources</h2>
+          <div class="topic-input-group">
+            <input type="text" id="topicInput" placeholder="Add a topic" />
+            <button id="addTopic" class="btn-secondary">Add Topic</button>
+          </div>
+          <ul id="topicList" class="topic-list"></ul>
+          <textarea id="resourcesInput" placeholder="Paste links/resources (one per line)"></textarea>
+          
+          <div class="upload-section">
+            <h4>Upload Study Materials</h4>
+            <p>Add PDF documents to get more targeted questions.</p>
+            
+            <div class="upload-row">
+              <input type="file" id="pdfUpload" accept=".pdf,.txt,.docx" style="display: none;" />
+              <button id="uploadBtn" class="btn-secondary">📄 Upload Document</button>
+            </div>
+            
+            <div class="upload-status" id="uploadStatus"></div>
+            <div class="uploaded-docs" id="uploadedDocs"></div>
+          </div>
+        </section>
+
+        <section class="card space-stack" id="timers">
+          <h2>Timer Settings (seconds)</h2>
+          <div class="grid">
+            <label>Starting break (sec) <input type="number" id="startingBreak" min="1" value="5" /></label>
+            <label>Decrement (sec) <input type="number" id="decrement" min="1" value="1" /></label>
+            <label>Min gate time (sec) <input type="number" id="minGateSeconds" min="0" value="10" /></label>
+            <label><input type="checkbox" id="graceMode" /> Grace mode</label>
+          </div>
+          <p class="timer-note">Timer decrements to zero, then blocks completely until micro-task is completed.</p>
+        </section>
+
+        <section class="card space-stack" id="actions">
+          <button id="resetBtn" class="secondary">Reset to Defaults</button>
+          <button id="historyBtn" class="secondary">View Learning History</button>
+          <span id="status" class="status"></span>
+        </section>
+      </main>
+
+      <footer>
+        <small>v0.1.0</small>
+      </footer>
+    </div>
+
+    <script src="../utils/storage.js"></script>
+    <script src="options.js"></script>
+  </body>
+  </html>
+
+
+

@@ -1,0 +1,7 @@
+📚 PDF AI Backend running on http://localhost:3132
+🔑 OpenAI configured: true
+
+Endpoints:
+  POST /upload - Upload PDF
+  POST /prompt - Generate teaching prompts
+  GET /status - Check PDF status

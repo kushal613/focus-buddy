@@ -1,0 +1,1 @@
+JavaScript is a programming language used for web development. It has features like functions, objects, and arrays. Modern JavaScript includes ES6 features like arrow functions and classes.
