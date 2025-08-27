@@ -127,7 +127,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "FW_GET_NEXT_TOPIC") {
       try {
         const { fwSettings } = await chrome.storage.sync.get(["fwSettings"]);
-        const topics = Array.isArray(fwSettings?.topics) && fwSettings.topics.length ? fwSettings.topics : ["General"];
+        const topics = Array.isArray(fwSettings?.topics) && fwSettings.topics.length > 0 ? fwSettings.topics : ["General"];
         const state = await getState();
         
         // Rotate to next topic
@@ -151,7 +151,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           topicIndex: nextIndex
         });
       } catch (e) {
-        sendResponse({ ok: false });
+        // If background fails, try to get topics directly and use the first one
+        try {
+          const { fwSettings } = await chrome.storage.sync.get(["fwSettings"]);
+          const topics = Array.isArray(fwSettings?.topics) && fwSettings.topics.length > 0 ? fwSettings.topics : ["General"];
+          sendResponse({ 
+            ok: true, 
+            topic: topics[0],
+            conversation: [],
+            topicIndex: 0
+          });
+        } catch (fallbackError) {
+          sendResponse({ ok: false });
+        }
       }
       return;
     }

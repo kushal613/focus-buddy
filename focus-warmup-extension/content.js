@@ -302,14 +302,16 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
         } else {
           // Fallback only if background fails
           const { fwSettings } = await chrome.storage.sync.get(['fwSettings']);
-          currentTopic = (fwSettings?.topics && fwSettings.topics[0]) || 'General';
+          const topics = Array.isArray(fwSettings?.topics) && fwSettings.topics.length > 0 ? fwSettings.topics : ["General"];
+          currentTopic = topics[0];
           console.log('Focus Warmup: Using fallback topic:', currentTopic);
           currentConversation = [];
         }
       } catch (_) { 
         // Fallback if all else fails
         const { fwSettings } = await chrome.storage.sync.get(['fwSettings']);
-        currentTopic = (fwSettings?.topics && fwSettings.topics[0]) || 'General';
+        const topics = Array.isArray(fwSettings?.topics) && fwSettings.topics.length > 0 ? fwSettings.topics : ["General"];
+        currentTopic = topics[0];
         console.log('Focus Warmup: Using error fallback topic:', currentTopic);
         currentConversation = [];
       }
