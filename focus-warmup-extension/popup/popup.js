@@ -17,12 +17,24 @@ const DEFAULTS = {
     "History",
     "Philosophy"
   ],
-  timers: { startingBreakMinutes: 5, decrementMinutes: 1, minimumBreakMinutes: 0, graceMode: false, devFast: true }
+  timers: { startingBreakMinutes: 5, decrementMinutes: 1 }
 };
 
-// Removed unused COMMON_SITES
-
+// Helper function for DOM queries
 function $(id) { return document.getElementById(id); }
+
+// Helper function for creating cards
+function createCard(className, content, dataAttr = {}) {
+  const card = document.createElement('label');
+  card.className = className;
+  card.innerHTML = content;
+  
+  Object.entries(dataAttr).forEach(([key, value]) => {
+    card.setAttribute(`data-${key}`, value);
+  });
+  
+  return card;
+}
 
 async function load() {
   const { fwSettings } = await FWStorage.getSync(["fwSettings"]);
@@ -52,12 +64,11 @@ function renderSites(settings) {
   const enabledSites = settings.distractionSites.filter(s => s.enabled);
   
   enabledSites.forEach(site => {
-    const card = document.createElement('label');
-    card.className = 'site-card';
-    card.innerHTML = `
+    const card = createCard('site-card', `
       <input type="checkbox" data-host="${site.host}" checked />
       <span>${site.host.replace('.com', '')}</span>
-    `;
+    `, { host: site.host });
+    
     container.appendChild(card);
   });
   
@@ -81,12 +92,11 @@ function renderTopics(settings) {
   
   // Show all topics
   settings.topics.forEach(topic => {
-    const card = document.createElement('label');
-    card.className = 'topic-card';
-    card.innerHTML = `
+    const card = createCard('topic-card', `
       <input type="checkbox" data-topic="${topic}" checked />
       <span>${topic}</span>
-    `;
+    `, { topic });
+    
     container.appendChild(card);
   });
   
@@ -101,10 +111,13 @@ function renderTopics(settings) {
         }
       } else {
         // Remove topic
-        settings.topics = settings.topics.filter(t => t !== topic);
+        const index = settings.topics.indexOf(topic);
+        if (index > -1) {
+          settings.topics.splice(index, 1);
+        }
       }
       await save(settings);
-      renderTopics(settings); // Re-render to show/hide unchecked items
+      renderTopics(settings);
     });
   });
 }
@@ -210,14 +223,12 @@ function addCustomTopic(settings) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  try {
-    const { fwMeta } = await FWStorage.getSync(["fwMeta"]);
-    if (fwMeta?.firstRun) {
-      chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/index.html') });
-      window.close();
-      return;
-    }
-  } catch (_) {}
+  const { fwMeta } = await FWStorage.getSync(["fwMeta"]);
+  if (fwMeta?.firstRun) {
+    chrome.tabs.create({ url: chrome.runtime.getURL('onboarding/index.html') });
+    window.close();
+    return;
+  }
   
   let s = await load();
   

@@ -75,25 +75,70 @@ h3 {
 .space-stack { margin-bottom: 18px; }
 .inline-row { display: flex; gap: 10px; align-items: center; }
 .upload-section {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 24px;
+  padding-top: 24px;
   border-top: 1px solid var(--border);
 }
 
 .upload-section h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
+  margin: 0 0 8px 0;
+  font-size: 14px;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.upload-desc {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.upload-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-controls .btn-secondary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-controls .btn-secondary:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+}
+
+.upload-icon {
+  font-size: 16px;
 }
 
 .upload-status {
-  margin-top: 8px;
+  margin-top: 12px;
   font-size: 13px;
   font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
 }
 
 .uploaded-docs {
-  margin-top: 12px;
+  margin-top: 16px;
 }
 
 .uploaded-doc {
@@ -439,6 +484,79 @@ footer { text-align: center; color: var(--muted); margin-top: 20px; }
 
 .topic-list .remove-btn:hover {
   background-color: #fef2f2;
+}
+
+/* Sites section layout */
+.sites-header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 24px;
+}
+
+.sites-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+}
+
+.sites-content {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.sites-content .checkbox-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sites-content .custom-add {
+  flex: 0 0 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.sites-content .custom-add input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: #ffffff;
+}
+
+.sites-content .custom-add button {
+  padding: 10px 14px;
+  font-size: 14px;
+  border-radius: 10px;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 600px) {
+  .sites-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .sites-content {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .sites-content .custom-add {
+    flex: none;
+    width: 100%;
+  }
 }
 
 

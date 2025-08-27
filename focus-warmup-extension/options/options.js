@@ -8,17 +8,16 @@ const DEFAULT_SETTINGS = {
     { host: "pinterest.com", enabled: true },
     { host: "facebook.com", enabled: true }
   ],
-  passwordLock: { enabled: false, password: "" },
   topics: [],
   resources: [],
   timers: {
     startingBreakMinutes: 5,
-    decrementMinutes: 1,
-    minimumBreakMinutes: 1,
-    graceMode: false,
-    devFast: true
+    decrementMinutes: 1
   }
 };
+
+// Common site hosts for filtering
+const COMMON_HOSTS = ["tiktok.com", "youtube.com", "instagram.com", "twitter.com", "amazon.com", "ebay.com", "pinterest.com", "facebook.com"];
 
 async function loadSettings() {
   const { fwSettings } = await FWStorage.getSync(["fwSettings"]);
@@ -34,7 +33,8 @@ function $(id) { return document.getElementById(id); }
 function renderCustomSites(settings) {
   const list = $("customSiteList");
   list.innerHTML = "";
-  const customs = settings.distractionSites.filter((s) => !["tiktok.com","youtube.com","instagram.com","twitter.com","amazon.com","ebay.com","pinterest.com","facebook.com"].includes(s.host));
+  const customs = settings.distractionSites.filter((s) => !COMMON_HOSTS.includes(s.host));
+  
   customs.forEach((site, index) => {
     const li = document.createElement("li");
     li.innerHTML = `<span class="site-text">${site.host}</span> <button class="remove-btn" data-index="${index}">×</button>`;
@@ -45,7 +45,7 @@ function renderCustomSites(settings) {
   list.querySelectorAll('.remove-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const index = parseInt(e.target.getAttribute('data-index'));
-      const customs = settings.distractionSites.filter((s) => !["tiktok.com","youtube.com","instagram.com","twitter.com","amazon.com","ebay.com","pinterest.com","facebook.com"].includes(s.host));
+      const customs = settings.distractionSites.filter((s) => !COMMON_HOSTS.includes(s.host));
       const siteToRemove = customs[index];
       if (siteToRemove) {
         const siteIndex = settings.distractionSites.findIndex(s => s.host === siteToRemove.host);
@@ -78,15 +78,9 @@ function applyCommonSites(settings) {
 document.addEventListener("DOMContentLoaded", async () => {
   const settings = await loadSettings();
 
-  // Password
-  $("passwordEnabled").checked = !!settings.passwordLock.enabled;
-  $("passwordValue").value = settings.passwordLock.password || "";
-
   // Timers
   $("startingBreak").value = settings.timers.startingBreakMinutes || 5;
   $("decrement").value = settings.timers.decrementMinutes || 1;
-  $("graceMode").checked = !!settings.timers.graceMode;
-  $("minGateSeconds").value = Number(settings.timers.minGateSeconds ?? 10);
 
   renderCustomSites(settings);
   // Auto-save for all form elements
@@ -100,17 +94,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  // Auto-save for password settings
-  $("passwordEnabled").addEventListener('change', async () => {
-    settings.passwordLock.enabled = $("passwordEnabled").checked;
-    await saveSettings(settings);
-  });
-
-  $("passwordValue").addEventListener('blur', async () => {
-    settings.passwordLock.password = $("passwordValue").value;
-    await saveSettings(settings);
-  });
-
   // Auto-save for timer settings
   $("startingBreak").addEventListener('blur', async () => {
     settings.timers.startingBreakMinutes = Number($("startingBreak").value) || 5;
@@ -119,16 +102,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("decrement").addEventListener('blur', async () => {
     settings.timers.decrementMinutes = Number($("decrement").value) || 1;
-    await saveSettings(settings);
-  });
-
-  $("graceMode").addEventListener('change', async () => {
-    settings.timers.graceMode = $("graceMode").checked;
-    await saveSettings(settings);
-  });
-
-  $("minGateSeconds").addEventListener('blur', async () => {
-    settings.timers.minGateSeconds = Math.max(0, Number($("minGateSeconds").value) || 0);
     await saveSettings(settings);
   });
 

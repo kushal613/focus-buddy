@@ -21,37 +21,27 @@
 
         <section class="card space-stack" id="sites">
           <h2>Distraction Sites</h2>
-          <div class="row">
-            <div class="col">
-              <h3>Common distractions</h3>
-              <div class="checkbox-grid">
-                <label><input type="checkbox" class="common-site" data-host="facebook.com" /> <span>Facebook</span></label>
-                <label><input type="checkbox" class="common-site" data-host="instagram.com" /> <span>Instagram</span></label>
-                <label><input type="checkbox" class="common-site" data-host="tiktok.com" /> <span>TikTok</span></label>
-                <label><input type="checkbox" class="common-site" data-host="youtube.com" /> <span>YouTube</span></label>
-                <label><input type="checkbox" class="common-site" data-host="twitter.com" /> <span>X (Twitter)</span></label>
-                <label><input type="checkbox" class="common-site" data-host="pinterest.com" /> <span>Pinterest</span></label>
-                <label><input type="checkbox" class="common-site" data-host="amazon.com" /> <span>Amazon</span></label>
-                <label><input type="checkbox" class="common-site" data-host="ebay.com" /> <span>eBay</span></label>
-              </div>
+          <div class="sites-header">
+            <h3>Common distractions</h3>
+            <h3>Add custom</h3>
+          </div>
+          <div class="sites-content">
+            <div class="checkbox-grid">
+              <label><input type="checkbox" class="common-site" data-host="facebook.com" /> <span>Facebook</span></label>
+              <label><input type="checkbox" class="common-site" data-host="instagram.com" /> <span>Instagram</span></label>
+              <label><input type="checkbox" class="common-site" data-host="tiktok.com" /> <span>TikTok</span></label>
+              <label><input type="checkbox" class="common-site" data-host="youtube.com" /> <span>YouTube</span></label>
+              <label><input type="checkbox" class="common-site" data-host="twitter.com" /> <span>X (Twitter)</span></label>
+              <label><input type="checkbox" class="common-site" data-host="pinterest.com" /> <span>Pinterest</span></label>
+              <label><input type="checkbox" class="common-site" data-host="amazon.com" /> <span>Amazon</span></label>
+              <label><input type="checkbox" class="common-site" data-host="ebay.com" /> <span>eBay</span></label>
             </div>
-            <div class="col">
-              <h3>Add custom</h3>
-              <div class="custom-add">
-                <input type="text" id="customSiteInput" placeholder="domain.com" />
-                <button id="addCustomSite" class="btn-secondary">Add</button>
-              </div>
-              <ul id="customSiteList" class="custom-list"></ul>
+            <div class="custom-add">
+              <input type="text" id="customSiteInput" placeholder="domain.com" />
+              <button id="addCustomSite" class="btn-secondary">Add</button>
             </div>
           </div>
-        </section>
-
-        <section class="card space-stack" id="security">
-          <h2>Password Lock (Optional)</h2>
-          <label>
-            <input type="checkbox" id="passwordEnabled" /> Require password to edit settings
-          </label>
-          <input type="password" id="passwordValue" placeholder="Set a password" />
+          <ul id="customSiteList" class="custom-list"></ul>
         </section>
 
         <section class="card space-stack" id="topics">
@@ -64,12 +54,15 @@
           <textarea id="resourcesInput" placeholder="Paste links/resources (one per line)"></textarea>
           
           <div class="upload-section">
-            <h4>Upload Study Materials</h4>
-            <p>Add PDF documents to get more targeted questions.</p>
+            <h3>Upload Study Materials</h3>
+            <p class="upload-desc">Add PDF documents to get more targeted questions.</p>
             
-            <div class="upload-row">
+            <div class="upload-controls">
               <input type="file" id="pdfUpload" accept=".pdf,.txt,.docx" style="display: none;" />
-              <button id="uploadBtn" class="btn-secondary">📄 Upload Document</button>
+              <button id="uploadBtn" class="btn-secondary">
+                <span class="upload-icon">📄</span>
+                <span>Upload Document</span>
+              </button>
             </div>
             
             <div class="upload-status" id="uploadStatus"></div>
@@ -82,8 +75,6 @@
           <div class="grid">
             <label>Starting break (sec) <input type="number" id="startingBreak" min="1" value="5" /></label>
             <label>Decrement (sec) <input type="number" id="decrement" min="1" value="1" /></label>
-            <label>Min gate time (sec) <input type="number" id="minGateSeconds" min="0" value="10" /></label>
-            <label><input type="checkbox" id="graceMode" /> Grace mode</label>
           </div>
           <p class="timer-note">Timer decrements to zero, then blocks completely until micro-task is completed.</p>
         </section>

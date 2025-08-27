@@ -8,19 +8,11 @@ const DEFAULT_SETTINGS = {
     { host: "pinterest.com", enabled: true },
     { host: "facebook.com", enabled: true }
   ],
-  passwordLock: {
-    enabled: false,
-    password: ""
-  },
   topics: [],
   resources: [],
   timers: {
     startingBreakMinutes: 5,
-    decrementMinutes: 1,
-    minimumBreakMinutes: 0,
-    graceMode: false,
-    devFast: true,
-    minGateSeconds: 10
+    decrementMinutes: 1
   }
 };
 
@@ -104,8 +96,10 @@ async function saveLearningEntry(entry) {
 async function getLearningHistory() {
   try {
     const { fwHistory } = await chrome.storage.local.get(['fwHistory']);
-    return fwHistory || [];
+    const history = fwHistory || [];
+    return history;
   } catch (err) {
+    console.error('Error getting learning history:', err);
     return [];
   }
 }
@@ -113,8 +107,6 @@ async function getLearningHistory() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (!message || !message.type) return;
-
-
 
     if (message.type === "FW_GET_SETTINGS") {
       const settings = await getSettings();
@@ -197,6 +189,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "FW_COMPLETE_TASK") {
       const host = normalizeHost(message.host);
+      
       const settings = await getSettings();
       const state = await getState();
       const current = state.perHostBreakMinutes[host] ?? settings.timers.startingBreakMinutes;
@@ -352,8 +345,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         let resp;
         
-        // Priority: PDF > Regular chat
-        if (hasPDF) {
+        // For quiz, hint, and explain requests, always try PDF backend first (even without PDF content)
+        // as it has better quiz handling
+        if (message.mode === 'quiz' || message.mode === 'hint' || message.mode === 'explain' || hasPDF) {
           // Try PDF backend first
           try {
             resp = await fetch("http://localhost:3132/prompt", {
@@ -384,8 +378,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return;
             }
             
-            sendResponse({ 
-              ok: true, 
+            sendResponse({ ok: true, 
               reply: data?.task || '', 
               phase: data?.phase || 'teach',
               source: data?.source || 'pdf'
@@ -407,17 +400,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // Use regular chat API with proper prompt engineering
           const promptToUse = message.teachingPrompt || message.quizPrompt || `Let's talk about ${topic}.`;
           
+          // For continuation prompts, don't send conversation history to avoid repetition
+          const conversationHistory = (message.teachingPrompt && message.teachingPrompt.includes('already learned')) 
+            ? [] 
+            : (message.conversationHistory || []);
+          
           resp = await fetch("http://localhost:3131/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ 
-              conversationHistory: message.conversationHistory || [], 
+              conversationHistory: conversationHistory, 
               topic,
               prompt: promptToUse
             })
           });
           const data = await resp.json();
-          sendResponse({ ok: true, reply: data?.reply || '' });
+          sendResponse({ ok: true, 
+            reply: data?.reply || '',
+            phase: message.mode || 'teach'
+          });
         }
       } catch (e) {
         sendResponse({ ok: false, error: String(e) });
@@ -435,8 +436,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           documents: fwSettings?.documents || []
         });
         
-        sendResponse({ 
-          ok: true, 
+        sendResponse({ ok: true, 
           hasPDF, 
           documents: fwSettings?.documents || []
         });
@@ -496,25 +496,62 @@ Only respond with the JSON object, no other text.`;
         
         if (resp.ok) {
           const data = await resp.json();
+          console.log('Focus Warmup: Raw evaluation response:', data);
+          
           try {
             // Try to parse the response as JSON
-            const evaluation = JSON.parse(data.reply || data.prompt || '{}');
-            sendResponse({ ok: true, result: evaluation });
+            const responseText = data.reply || data.prompt || '';
+            console.log('Focus Warmup: Attempting to parse evaluation response:', responseText);
+            
+            // Clean the response text to extract JSON
+            let jsonText = responseText.trim();
+            
+            // Try to find JSON in the response
+            const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              jsonText = jsonMatch[0];
+            }
+            
+            const evaluation = JSON.parse(jsonText);
+            console.log('Focus Warmup: Parsed evaluation:', evaluation);
+            
+            // Validate the evaluation object
+            if (typeof evaluation.correct === 'boolean' && evaluation.feedback) {
+              sendResponse({ ok: true, result: evaluation });
+            } else {
+              throw new Error('Invalid evaluation format');
+            }
           } catch (parseError) {
-            // If parsing fails, provide a fallback evaluation
-            sendResponse({ 
-              ok: true, 
+            console.error('Focus Warmup: Failed to parse evaluation response:', parseError);
+            
+            // Provide a more intelligent fallback based on the response text
+            const responseText = (data.reply || data.prompt || '').toLowerCase();
+            let isCorrect = false;
+            let feedback = "Evaluation service unavailable. Please try again.";
+            
+            // Try to infer correctness from the response text
+            if (responseText.includes('correct') || responseText.includes('right') || responseText.includes('yes')) {
+              isCorrect = true;
+              feedback = "Correct! Good job.";
+            } else if (responseText.includes('incorrect') || responseText.includes('wrong') || responseText.includes('no')) {
+              isCorrect = false;
+              feedback = "That's not quite right. Try again.";
+            }
+            
+            sendResponse({ ok: true, 
               result: { 
-                correct: false, 
-                feedback: "Evaluation service unavailable. Please try again.", 
+                correct: isCorrect, 
+                feedback: feedback, 
                 correctAnswer: "A" 
               } 
             });
           }
         } else {
+          console.error('Focus Warmup: Evaluation service returned error:', resp.status);
           sendResponse({ ok: false, error: 'Evaluation service unavailable' });
         }
       } catch (e) {
+        console.error('Focus Warmup: Evaluation error:', e);
         sendResponse({ ok: false, error: String(e) });
       }
       return;

@@ -11,8 +11,15 @@
   let lastContinuationConcept = '';
   let hasAnsweredMCQCorrectly = false;
   let mcqActive = false;
+  let mcqCompleted = false; // Track if MCQ has been completed and should stay in grid
   let hasPDFContent = false;
   let pdfDocuments = [];
+  let lastCorrectAnswer = null; // Store the correct answer for highlighting
+  
+  // Helper function for common DOM queries
+  function $(selector, parent = document) {
+    return parent.querySelector(selector);
+  }
   
   function setConversationPlaceholder(text) {
     const overlay = document.getElementById(OVERLAY_ID);
@@ -122,12 +129,15 @@
           quizBtn.removeAttribute('title');
         }
         
-        // Show ask UI and hide MCQ options
+        // Show ask UI and hide MCQ options when Learn More is clicked
         const ask = overlay.querySelector('#fw-ask');
         if (ask) ask.style.display = 'flex';
+        
+        // Hide MCQ options when Learn More is clicked, regardless of completion status
         const mcqOptions = overlay.querySelector('#fw-mcq-options');
         if (mcqOptions) mcqOptions.style.display = 'none';
         mcqActive = false;
+        // Don't reset mcqCompleted - let the context preservation logic handle it
       }
     });
     quizBtn?.addEventListener('click', async () => { 
@@ -182,6 +192,7 @@
       
       // Show as user message
       currentConversation.push({ role: 'user', content: q });
+      console.log('Focus Warmup: Added user message to conversation:', q);
       
       // Create a specific prompt for user questions with length limit
       const userQuestionPrompt = `The user asked: "${q}"
@@ -195,6 +206,7 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
       
       if (resp?.ok && resp.reply) {
         currentConversation.push({ role: 'assistant', content: resp.reply });
+        console.log('Focus Warmup: Added assistant message to conversation:', resp.reply);
         updateConversationUI();
         
         // Save session after user asks a question
@@ -225,10 +237,19 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
             });
 
     exitBtn?.addEventListener('click', async () => {
-      // Only save session if user completed an MCQ correctly
-      if (hasAnsweredMCQCorrectly) {
+      console.log('Focus Warmup: Exit button clicked, hasAnsweredMCQCorrectly:', hasAnsweredMCQCorrectly);
+      
+      // Save session if user completed an MCQ correctly OR if there's meaningful conversation
+      const hasAssistant = currentConversation.some(m => m.role === 'assistant');
+      const hasUser = currentConversation.some(m => m.role === 'user');
+      
+      if (hasAnsweredMCQCorrectly || (hasAssistant && hasUser)) {
+        console.log('Focus Warmup: Saving session on exit - MCQ completed or meaningful conversation exists');
         await saveSession();
+      } else {
+        console.log('Focus Warmup: No meaningful conversation to save on exit');
       }
+      
       // If user exits without completing MCQ, don't mark as completed
       // The pending popup will remain, so if they refresh, it shows immediately
       removeOverlay();
@@ -259,10 +280,13 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
     // Check PDF status first
     await checkPDFStatus();
     
+    console.log('Focus Warmup: ensureTopic called, currentTopic:', currentTopic, 'currentConversation length:', currentConversation.length);
+    
     if (!currentTopic) {
       try {
         // Get next topic in rotation with conversation context
         const next = await chrome.runtime.sendMessage({ type: 'FW_GET_NEXT_TOPIC' });
+        console.log('Focus Warmup: Got next topic response:', next);
         if (next?.ok && next.topic) {
           currentTopic = next.topic;
           
@@ -270,21 +294,27 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
           if (next.conversation && next.conversation.length > 0) {
             currentConversation = [...next.conversation];
             console.log(`Focus Warmup: Loaded existing conversation for ${currentTopic} (${currentConversation.length} messages)`);
+            console.log('Focus Warmup: Loaded conversation:', currentConversation);
           } else {
+            console.log('Focus Warmup: No existing conversation found, starting fresh');
             currentConversation = [];
           }
         } else {
           // Fallback only if background fails
           const { fwSettings } = await chrome.storage.sync.get(['fwSettings']);
           currentTopic = (fwSettings?.topics && fwSettings.topics[0]) || 'General';
+          console.log('Focus Warmup: Using fallback topic:', currentTopic);
           currentConversation = [];
         }
       } catch (_) { 
         // Fallback if all else fails
         const { fwSettings } = await chrome.storage.sync.get(['fwSettings']);
         currentTopic = (fwSettings?.topics && fwSettings.topics[0]) || 'General';
+        console.log('Focus Warmup: Using error fallback topic:', currentTopic);
         currentConversation = [];
       }
+    } else {
+      console.log('Focus Warmup: Using existing topic:', currentTopic, 'with conversation length:', currentConversation.length);
     }
     
     // Priority: PDF > Regular topics
@@ -310,20 +340,36 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
     const topic = await ensureTopic();
     if (!lastContinuationConcept) { await loadContinuity(); }
     
+    console.log('Focus Warmup: requestTeaching called with conversation length:', currentConversation.length);
+    console.log('Focus Warmup: Current conversation:', currentConversation);
+    
     // Ensure we're not in MCQ mode when teaching
     awaitingMCQ = false;
     mcqActive = false;
     
     // Show immediate placeholder so the card isn't blank
-    if (currentConversation.length === 0) {
+    // But only if we're not in a context preservation scenario
+    const hasMCQQuestion = currentConversation.some(msg => detectMCQ(msg.content));
+    const hasMCQFeedback = currentConversation.some(msg => msg.content.includes('Correct!') || msg.content.includes('Not quite'));
+    const shouldPreserveContext = hasMCQQuestion && hasMCQFeedback;
+    
+    if (currentConversation.length === 0 && !shouldPreserveContext) {
+      console.log('Focus Warmup: Conversation is empty and not preserving context, showing placeholder');
       setConversationPlaceholder(`Preparing a concept about ${topic}...`);
+    } else {
+      console.log('Focus Warmup: Conversation has messages or preserving context, not showing placeholder');
+      // If we have messages but they're not visible, render them
+      if (currentConversation.length > 0) {
+        console.log('Focus Warmup: Rendering existing conversation');
+        updateConversationUI();
+      }
     }
     const lastAssistant = currentConversation.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
     const req = currentConversation.length === 0
       ? (lastContinuationConcept
           ? `Teach about ${topic} continuing from: "${lastContinuationConcept}". Maximum 30 words, no markdown.`
           : `Teach about ${topic}. Maximum 30 words, no markdown.`)
-      : `Following from the last message, continue to teach the user a new concept about ${topic} in ~2 sentences. Maximum 30 words, no markdown.`;
+      : `System: You are a concise teacher. The user already learned: "${lastAssistant}". Teach a DIFFERENT concept about ${topic} in exactly 2 sentences. Maximum 30 words total. No markdown.`;
     
     const resp = await chrome.runtime.sendMessage({ 
       type: 'FW_CHAT', 
@@ -333,25 +379,98 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
     });
     
     if (resp?.ok && resp.reply) {
+      console.log('Focus Warmup: Teaching response received:', resp.reply);
+      console.log('Focus Warmup: Current conversation before adding new message:', currentConversation.length, 'messages');
+      
       currentConversation.push({ role: 'assistant', content: resp.reply });
       
-      // NEVER show MCQ interface for teaching responses
-      updateConversationUI();
+      console.log('Focus Warmup: Current conversation after adding new message:', currentConversation.length, 'messages');
       
-      // Show ask UI after any teaching response (first or subsequent)
-      const overlay = document.getElementById(OVERLAY_ID);
-      if (overlay) {
-        const ask = overlay.querySelector('#fw-ask');
-        if (ask) ask.style.display = 'flex';
+      // Check if we're preserving context (after a quiz)
+      const hasMCQQuestion = currentConversation.some(msg => detectMCQ(msg.content));
+      const hasMCQFeedback = currentConversation.some(msg => msg.content.includes('Correct!') || msg.content.includes('Not quite'));
+      const shouldPreserveContext = hasMCQQuestion && hasMCQFeedback;
+      
+      console.log('Focus Warmup: Context preservation check:', {
+        hasMCQQuestion,
+        hasMCQFeedback,
+        shouldPreserveContext,
+        conversationLength: currentConversation.length
+      });
+      
+      if (shouldPreserveContext) {
+        console.log('Focus Warmup: Preserving context - appending new message without rebuilding');
+        // When preserving context, just append the new message without rebuilding
+        const overlay = document.getElementById(OVERLAY_ID);
+        if (overlay) {
+          const conversation = overlay.querySelector('#fw-conversation');
+          if (conversation) {
+            // Ensure the conversation div exists and has the existing messages
+            // If the conversation is empty or doesn't have the expected messages, rebuild it first
+            const existingMessages = conversation.querySelectorAll('.conv-message');
+            if (existingMessages.length === 0) {
+              // If no messages are visible, rebuild the conversation to show all existing messages
+              console.log('Focus Warmup: No visible messages found, rebuilding conversation first');
+              updateConversationUI();
+              // Get the conversation div again after rebuilding
+              const rebuiltConversation = overlay.querySelector('#fw-conversation');
+              if (rebuiltConversation) {
+                const newMessageDiv = document.createElement('div');
+                newMessageDiv.className = 'conv-message assistant';
+                newMessageDiv.innerHTML = `<div class="conv-text">${sanitizeText(resp.reply)}</div>`;
+                rebuiltConversation.appendChild(newMessageDiv);
+                rebuiltConversation.scrollTop = rebuiltConversation.scrollHeight;
+                console.log('Focus Warmup: New message appended after rebuilding');
+              }
+            } else {
+              // Messages are already visible, just append the new one
+              const newMessageDiv = document.createElement('div');
+              newMessageDiv.className = 'conv-message assistant';
+              newMessageDiv.innerHTML = `<div class="conv-text">${sanitizeText(resp.reply)}</div>`;
+              conversation.appendChild(newMessageDiv);
+              conversation.scrollTop = conversation.scrollHeight;
+              console.log('Focus Warmup: New message appended successfully');
+            }
+          }
+          
+          // Show ask UI
+          const ask = overlay.querySelector('#fw-ask');
+          if (ask) ask.style.display = 'flex';
+          
+          // Hide MCQ options when Learn More is clicked
+          const mcqOptions = overlay.querySelector('#fw-mcq-options');
+          if (mcqOptions) mcqOptions.style.display = 'none';
+          mcqActive = false;
+        }
         
-        // Hide MCQ options when Learn More is clicked
-        const mcqOptions = overlay.querySelector('#fw-mcq-options');
-        if (mcqOptions) mcqOptions.style.display = 'none';
-        mcqActive = false;
+        // IMPORTANT: Don't call updateConversationUI() when preserving context
+        console.log('Focus Warmup: Skipping updateConversationUI() to preserve context');
+        return; // Exit early to prevent any further processing
+      } else {
+        console.log('Focus Warmup: Normal teaching - using updateConversationUI');
+        // For normal teaching (not after quiz), use the normal update
+        updateConversationUI();
+        
+        // Show ask UI after any teaching response (first or subsequent)
+        const overlay = document.getElementById(OVERLAY_ID);
+        if (overlay) {
+          const ask = overlay.querySelector('#fw-ask');
+          if (ask) ask.style.display = 'flex';
+          
+          // Hide MCQ options when Learn More is clicked
+          const mcqOptions = overlay.querySelector('#fw-mcq-options');
+          if (mcqOptions) mcqOptions.style.display = 'none';
+          mcqActive = false;
+        }
       }
       
-      // Save session after teaching
-      await saveSession();
+      // Save session after teaching, but only if not preserving context
+      if (!shouldPreserveContext) {
+        console.log('Focus Warmup: Normal teaching - saving session');
+        await saveSession();
+      } else {
+        console.log('Focus Warmup: Context preservation mode - skipping save during teaching (will save on MCQ completion)');
+      }
     } else {
       setConversationPlaceholder(`Error: Could not reach AI service. Please ensure servers are running (3131, 3132).`);
     }
@@ -366,38 +485,57 @@ Please provide a concise answer to their question. Keep your response to 2-3 sen
       .map(m => m.content)
       .join(' ');
     
-    const req = `Based on this recent teaching: "${recentTeaching}"
+    const req = `Create a multiple-choice question about ${topic} based on: "${recentTeaching}"
 
-Generate one multiple-choice question that directly tests understanding of the concepts just taught. The question should be about ${topic} and specifically relate to the teaching content above.
+Format exactly like this:
+Question here?
 
-After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on new lines. 
-- Make option A, B, C, or D the correct answer based on the teaching content
-- Make the other options plausible but clearly incorrect
-- Do not include any labels like "Correct Answer"
-- Do not use markdown or headings
-- Keep the question to one sentence
-- Ensure the correct answer directly reflects what was just taught
-- IMPORTANT: Randomize which position (A, B, C, or D) contains the correct answer - do not always put it in position A`;
+A) First option
+B) Second option  
+C) Third option
+D) Fourth option
+
+Keep question to one sentence. Make one option correct, others wrong. No markdown.`;
+
+    console.log('Focus Warmup: Requesting MCQ with prompt:', req);
+    console.log('Focus Warmup: Topic:', topic);
+    console.log('Focus Warmup: Recent teaching:', recentTeaching);
 
     awaitingMCQ = true;
+    mcqCompleted = false; // Reset completed flag for new quiz
+    lastCorrectAnswer = null; // Reset correct answer for new quiz
     const resp = await chrome.runtime.sendMessage({ 
       type: 'FW_CHAT', 
       conversationHistory: currentConversation,
       mode: 'quiz',
       quizPrompt: req
     });
+    
+    console.log('Focus Warmup: MCQ response received:', resp);
+    
     if (resp?.ok && resp.reply) {
+      console.log('Focus Warmup: MCQ content:', resp.reply);
       currentConversation.push({ role: 'assistant', content: resp.reply });
       
-      // Check if this is an MCQ response
+      // Always try to detect MCQ for quiz responses
       if (resp.phase === 'quiz') {
+        console.log('Quiz response received, phase:', resp.phase);
+        console.log('Response content:', resp.reply);
         const mcq = detectMCQ(resp.reply);
+        console.log('MCQ detection result:', mcq);
         if (mcq) {
+          console.log('Showing MCQ interface with:', mcq);
           showMCQInterface(document.getElementById(OVERLAY_ID), mcq);
+        } else {
+          // If MCQ detection fails, show the raw response
+          console.log('MCQ detection failed, showing raw response');
+          updateConversationUI();
         }
+      } else {
+        console.log('Non-quiz response, phase:', resp.phase);
+        updateConversationUI();
       }
       
-      updateConversationUI();
       // Ensure action bar remains visible under MCQ so user can choose to learn/quiz again after a correct answer
       const overlay = document.getElementById(OVERLAY_ID);
       if (overlay) {
@@ -405,13 +543,33 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
         if (actions) actions.style.display = 'flex';
       }
     } else {
+      console.error('Focus Warmup: MCQ request failed:', resp);
       setConversationPlaceholder(`Error: Could not reach AI service. Please ensure servers are running (3131, 3132).`);
     }
   }
 
   function updateConversationUI() {
+    console.log('Focus Warmup: updateConversationUI called');
     const overlay = document.getElementById(OVERLAY_ID);
     if (!overlay) return;
+    
+    // Check if we're preserving context (after a quiz)
+    const hasMCQQuestion = currentConversation.some(msg => detectMCQ(msg.content));
+    const hasMCQFeedback = currentConversation.some(msg => msg.content.includes('Correct!') || msg.content.includes('Not quite'));
+    const shouldPreserveContext = hasMCQQuestion && hasMCQFeedback;
+    
+    console.log('Focus Warmup: updateConversationUI context check:', {
+      hasMCQQuestion,
+      hasMCQFeedback,
+      shouldPreserveContext,
+      conversationLength: currentConversation.length
+    });
+    
+    // If we're preserving context, we still need to render the conversation
+    // but we'll handle it differently to ensure all messages are shown
+    if (shouldPreserveContext) {
+      console.log('Focus Warmup: updateConversationUI called with context preservation - rendering all messages');
+    }
 
     // Update conversation display
     let conversationDiv = overlay.querySelector('.fw-conversation');
@@ -427,37 +585,119 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
       }
     }
 
-    // Detect MCQ only when explicitly requested
+    // Detect MCQ only when explicitly requested for a quiz
     const lastMsg = currentConversation[currentConversation.length - 1];
     let mcq = null;
     if (awaitingMCQ && lastMsg && lastMsg.role === 'assistant') {
       mcq = detectMCQ(lastMsg.content);
     }
+    
+    // Don't treat teaching responses as MCQ even if they contain quiz-like content
+    if (!awaitingMCQ && lastMsg && lastMsg.role === 'assistant') {
+      mcq = null; // Force mcq to null for teaching responses
+    }
 
-    // Show recent conversation (last 6 messages), exclude MCQ messages from chat display
-    const recentMessages = currentConversation.slice(-6);
-    const messagesToRender = mcq ? recentMessages.slice(0, -1) : recentMessages;
-    conversationDiv.innerHTML = messagesToRender.map(msg => {
-      const isMCQ = detectMCQ(msg.content);
-      const messageClass = isMCQ ? 'conv-message assistant mcq-question' : `conv-message ${msg.role}`;
+    // Show recent conversation, preserving all messages when Learn More is clicked
+    // When Learn More is clicked after a quiz, show all messages to preserve context
+    
+    console.log('Focus Warmup: Conversation state', {
+      totalMessages: currentConversation.length,
+      hasMCQQuestion,
+      hasMCQFeedback,
+      shouldPreserveContext,
+      mcqActive,
+      mcqCompleted
+    });
+    
+    // When preserving context (after quiz), show all messages. Otherwise show recent ones
+    const messagesToRender = shouldPreserveContext ? currentConversation : currentConversation.slice(-6);
+    const finalMessages = mcq ? messagesToRender.slice(0, -1) : messagesToRender;
+    
+    console.log('Focus Warmup: Final message selection:', {
+      shouldPreserveContext,
+      messagesToRenderLength: messagesToRender.length,
+      finalMessagesLength: finalMessages.length,
+      mcq: !!mcq,
+      mcqActive,
+      mcqCompleted
+    });
+    
+    console.log('Focus Warmup: Messages to render:', {
+      shouldPreserveContext,
+      totalMessages: currentConversation.length,
+      messagesToRenderLength: messagesToRender.length,
+      finalMessagesLength: finalMessages.length,
+      mcq: !!mcq
+    });
+    
+    // Only update conversation if we have messages to show
+    if (finalMessages.length > 0) {
+      console.log('Focus Warmup: Building conversation HTML with', finalMessages.length, 'messages');
       
-      // Don't render MCQ messages in chat - they'll be shown as bubbles
-      if (isMCQ) {
-        return '';
+      // Build the conversation HTML - show ALL messages when preserving context
+      let conversationHTML = '';
+      
+      for (const msg of finalMessages) {
+        const isMCQ = detectMCQ(msg.content);
+        const messageClass = isMCQ ? 'conv-message assistant mcq-question' : `conv-message ${msg.role}`;
+        
+        console.log('Focus Warmup: Processing message:', {
+          content: msg.content.substring(0, 50) + '...',
+          isMCQ,
+          messageClass,
+          shouldPreserveContext,
+          includesCorrect: msg.content.includes('Correct!'),
+          includesNotQuite: msg.content.includes('Not quite')
+        });
+        
+        // When preserving context, show ALL messages without any filtering
+        if (shouldPreserveContext) {
+          // Check if this is MCQ content and we should highlight the correct answer
+          let contentToDisplay = sanitizeText(msg.content);
+          if (isMCQ && hasAnsweredMCQCorrectly) {
+            contentToDisplay = highlightCorrectAnswerInText(msg.content);
+          }
+          
+          conversationHTML += `
+            <div class="${messageClass}">
+            <div class="conv-text">${contentToDisplay}</div>
+          </div>
+          `;
+          console.log('Focus Warmup: Added message to conversation (preserving context)');
+        } else {
+          // For normal cases, only filter out the original MCQ question when it's actively being displayed in the grid
+          const isOriginalMCQ = isMCQ && !msg.content.includes('Correct!') && !msg.content.includes('Not quite');
+          // When preserving context, don't filter out any messages
+          if (shouldPreserveContext || !(isOriginalMCQ && mcqActive && !mcqCompleted)) {
+            // Check if this is MCQ content and we should highlight the correct answer
+            let contentToDisplay = sanitizeText(msg.content);
+            if (isMCQ && hasAnsweredMCQCorrectly) {
+              contentToDisplay = highlightCorrectAnswerInText(msg.content);
+            }
+            
+            conversationHTML += `
+              <div class="${messageClass}">
+            <div class="conv-text">${contentToDisplay}</div>
+          </div>
+          `;
+            console.log('Focus Warmup: Added message to conversation (normal case)');
+          } else {
+            console.log('Focus Warmup: Filtered out message (normal case)');
+          }
+        }
       }
       
-      return `
-        <div class="${messageClass}">
-        <div class="conv-text">${sanitizeText(msg.content)}</div>
-      </div>
-      `;
-    }).join('');
+      console.log('Focus Warmup: Setting conversation HTML, length:', conversationHTML.length);
+      
+      // Set the conversation HTML
+      conversationDiv.innerHTML = conversationHTML;
+    }
 
     if (mcq) { 
       showMCQInterface(overlay, mcq); 
     } else { 
-      // Keep MCQ visible if currently active (e.g., after hints/feedback)
-      if (!mcqActive) {
+      // Keep MCQ interface visible if completed, only hide if not active and not completed
+      if (!mcqActive && !mcqCompleted) {
         hideMCQInterface(overlay);
       }
     }
@@ -472,6 +712,69 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
     conversationDiv.scrollTop = conversationDiv.scrollHeight;
   }
 
+
+  
+  function highlightCorrectAnswerInText(text) {
+    // First sanitize the text
+    let processedText = sanitizeText(text);
+    
+    // Find the correct answer from the conversation history
+    const correctAnswer = findCorrectAnswerFromHistory();
+    console.log('Focus Warmup: highlightCorrectAnswerInText called with correctAnswer:', correctAnswer);
+    
+    if (!correctAnswer) {
+      console.log('Focus Warmup: No correct answer found, returning original text');
+      return processedText;
+    }
+    
+    // Check if this text contains MCQ options
+    if (!/[A-D][\)\.]\s*[^A-D]/.test(processedText)) {
+      console.log('Focus Warmup: No MCQ options found in text');
+      return processedText;
+    }
+    
+    // Ensure proper formatting of MCQ options with line breaks
+    processedText = formatMCQOptions(processedText);
+    
+    // Highlight the correct answer with green text
+    const highlightedText = processedText.replace(
+      new RegExp(`(${correctAnswer}[\)\.]\\s*.*?)(?=<br>|$)`, 'g'), // Capture up to next <br> or end of string
+      `<span style="color: #28a745; font-weight: bold;">$1</span>`
+    );
+    
+    // Add a note below the question
+    const questionEndIndex = highlightedText.search(/[A-D][\)\.]/);
+    if (questionEndIndex > 0) {
+      const beforeOptions = highlightedText.substring(0, questionEndIndex);
+      const options = highlightedText.substring(questionEndIndex);
+      
+      return `${beforeOptions}<br>${options}`;
+    }
+    
+    return highlightedText;
+  }
+  
+  function findCorrectAnswerFromHistory() {
+    // First, check if we have the stored correct answer
+    if (lastCorrectAnswer) {
+      return lastCorrectAnswer;
+    }
+    
+    // Look through the conversation history to find the correct answer
+    for (let i = currentConversation.length - 1; i >= 0; i--) {
+      const message = currentConversation[i];
+      if (message.content.includes('Correct!') || message.content.includes('correct answer is')) {
+        // Extract the correct answer letter (A, B, C, or D)
+        const match = message.content.match(/correct answer is ([A-D])/i);
+        if (match) {
+          return match[1];
+        }
+      }
+    }
+    
+    return null;
+  }
+
   function removeOverlay() {
     const el = document.getElementById(OVERLAY_ID);
     if (el) el.remove();
@@ -483,6 +786,8 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
   }
 
   function detectMCQ(text) {
+    console.log('Focus Warmup: detectMCQ called with text:', text.substring(0, 200) + '...');
+    
     // Look for A) B) C) D) pattern or A. B. C. D. pattern
     const pattern = /([A-D][\)\.])\s*([^A-D\n][\s\S]*?)(?=\s+[A-D][\)\.]|$)/g;
     const options = [];
@@ -495,17 +800,23 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
       });
     }
     
+    console.log('Focus Warmup: detectMCQ found options:', options);
+    
     if (options.length >= 4) {
       // Extract the question (everything before the first option)
       const firstOptionIndex = text.search(/[A-D][\)\.]/);
       const question = firstOptionIndex > 0 ? text.substring(0, firstOptionIndex).trim() : text;
       
-      return {
+      const result = {
         question,
         options
       };
+      
+      console.log('Focus Warmup: detectMCQ returning result:', result);
+      return result;
     }
     
+    console.log('Focus Warmup: detectMCQ - not enough options found, returning null');
     return null;
   }
 
@@ -534,9 +845,12 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
 
   function formatMCQOptions(text) {
     // Check if this looks like MCQ content (contains A) B) C) D) pattern)
-    if (!/[A-D][\)\.]\s*[^A-D]/.test(text)) {
+    if (!/[A-D][\)\.]/.test(text)) {
       return text;
     }
+    
+    // Clean up the text first - remove any existing HTML line breaks and normalize whitespace
+    text = text.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim();
     
     // Split the text into question and options
     const firstOptionIndex = text.search(/[A-D][\)\.]/);
@@ -545,51 +859,70 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
     }
     
     const question = text.substring(0, firstOptionIndex).trim();
-    const optionsText = text.substring(firstOptionIndex);
+    let optionsText = text.substring(firstOptionIndex);
     
-    // Format options with proper line breaks and spacing
-    const formattedOptions = optionsText
-      .replace(/([A-D][\)\.])\s*/g, '<br>$1 ')
-      .replace(/^<br>/, ''); // Remove leading <br> from first option
+    // Split options by the pattern "X)" or "X."
+    // This regex captures the option letter and punctuation, and the text following it
+    const optionRegex = /([A-D][\)\.])\s*(.*?)(?=\s*[A-D][\)\.]|$)/g;
+    let match;
+    const options = [];
+    while ((match = optionRegex.exec(optionsText)) !== null) {
+      options.push(`${match[1]} ${match[2].trim()}`);
+    }
     
-    return `${question}<br><br>${formattedOptions}`;
+    // Join options with a single <br>
+    const formattedOptions = options.join('<br>');
+    
+    // Return with one <br> between question and first option
+    return `${question}<br>${formattedOptions}`;
   }
 
 
 
   function showMCQInterface(overlay, mcqData) {
+    console.log('showMCQInterface called with:', mcqData);
     const mcqOptions = overlay.querySelector('#fw-mcq-options');
     const actions = overlay.querySelector('#fw-actions');
     
     // Hide action buttons when showing MCQ
     if (actions) actions.style.display = 'none';
     if (mcqOptions) {
-      mcqOptions.style.display = 'none'; // Hide the grid layout
       awaitingMCQ = false;
       mcqActive = true;
       
-      // Show the MCQ question and options in the conversation
+      // Show the MCQ question in the conversation
       const conversation = overlay.querySelector('#fw-conversation');
+      console.log('Conversation div found:', !!conversation);
       if (conversation) {
         // Add the question with orange styling
         const qDiv = document.createElement('div');
         qDiv.className = 'conv-message assistant mcq-question';
         qDiv.innerHTML = `<div class="conv-text">${sanitizeText(mcqData.question)}</div>`;
         conversation.appendChild(qDiv);
-        
-        // Add each option as a separate bubble
-        mcqData.options.forEach((option, index) => {
-          const optionDiv = document.createElement('div');
-          optionDiv.className = 'conv-message user mcq-option-bubble';
-          optionDiv.setAttribute('data-choice', String.fromCharCode(65 + index)); // A, B, C, D
-          optionDiv.innerHTML = `<div class="conv-text">${String.fromCharCode(65 + index)}) ${option.text}</div>`;
-          optionDiv.style.cursor = 'pointer';
-          optionDiv.onclick = () => selectMCQOption(optionDiv);
-          conversation.appendChild(optionDiv);
-        });
+        console.log('Question div added');
         
         conversation.scrollTop = conversation.scrollHeight;
       }
+      
+      // Populate and show the MCQ options grid
+      mcqData.options.forEach((option, index) => {
+        const choice = String.fromCharCode(65 + index); // A, B, C, D
+        const optionElement = mcqOptions.querySelector(`#mcq-${choice.toLowerCase()}`);
+        if (optionElement) {
+          // Reset any previous state (correct/error/selected classes)
+          optionElement.classList.remove('selected', 'error', 'correct');
+          optionElement.style.pointerEvents = 'auto'; // Re-enable clicking
+          
+          optionElement.textContent = `${choice}) ${option.text}`;
+          optionElement.setAttribute('data-choice', choice);
+          optionElement.onclick = () => selectMCQOption(optionElement);
+          optionElement.style.cursor = 'pointer';
+        }
+      });
+      
+      // Show the MCQ options grid
+      mcqOptions.style.display = 'grid';
+      console.log('MCQ options grid displayed');
     }
   }
 
@@ -606,9 +939,9 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
 
 
   function selectMCQOption(selectedOption) {
-    // Remove selected class from all option bubbles first
-    document.querySelectorAll('.mcq-option-bubble').forEach(opt => {
-      opt.classList.remove('selected', 'error', 'correct');
+    // Don't remove error/correct classes - keep wrong answers red and correct answers green
+    document.querySelectorAll('.mcq-option').forEach(opt => {
+      opt.classList.remove('selected'); // Only remove selected class
     });
     
     // Add selected class to the clicked option
@@ -620,23 +953,45 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
   async function handleMCQAnswer(choice) {
     // Evaluate via backend for correctness
     const lastAssistant = currentConversation.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
+    console.log('Focus Warmup: Evaluating MCQ answer', { choice, question: lastAssistant });
+    
     const evalResp = await chrome.runtime.sendMessage({ type: 'FW_EVALUATE_MCQ', question: lastAssistant, answer: choice, conversationHistory: currentConversation });
+    console.log('Focus Warmup: MCQ evaluation response:', evalResp);
+    
     const overlay = document.getElementById(OVERLAY_ID);
-    const mcqOptionBubbles = overlay?.querySelectorAll('.mcq-option-bubble');
+    const mcqOptions = overlay?.querySelectorAll('.mcq-option');
     
     if (evalResp?.ok && evalResp.result) {
       const isCorrect = !!evalResp.result.correct;
       const feedback = evalResp.result.feedback || (isCorrect ? 'Correct!' : 'Not quite, try again.');
       
-      // Visual feedback on option bubbles
-      mcqOptionBubbles?.forEach(opt => {
+      console.log('Focus Warmup: MCQ evaluation result', { isCorrect, feedback, result: evalResp.result });
+      
+      // Visual feedback on option elements
+      console.log('Focus Warmup: MCQ answer feedback', { choice, isCorrect });
+      mcqOptions?.forEach(opt => {
         const letter = opt.getAttribute('data-choice');
-        opt.classList.remove('selected','error','correct');
         if (letter === choice) {
-          opt.classList.add(isCorrect ? 'correct' : 'error');
+          const className = isCorrect ? 'correct' : 'error';
+          opt.classList.add(className);
+          console.log(`Focus Warmup: Added ${className} class to option ${letter}`);
+          
+          if (isCorrect) {
+            // For correct answers, disable all options
+            opt.style.pointerEvents = 'none';
+          } else {
+            // For wrong answers, keep this option red but allow clicking other options
+            opt.style.pointerEvents = 'none'; // Disable this specific option
+          }
+        } else {
+          // For other options, keep them clickable if the answer was wrong
+          if (!isCorrect) {
+            opt.style.pointerEvents = 'auto';
+            opt.classList.remove('selected'); // Only remove selected class, preserve error/correct
+          } else {
+            opt.style.pointerEvents = 'none';
+          }
         }
-        // Disable clicking options after a selection
-        opt.style.pointerEvents = 'none';
       });
 
       // Add feedback bubble with explanation
@@ -660,9 +1015,36 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
             const explanation = explanationResp?.ok && explanationResp.reply ? explanationResp.reply : feedback;
             fbDiv.innerHTML = `<div class="conv-text">✅ Correct! ${sanitizeText(explanation)}</div>`;
           } else {
-            // For incorrect answers, provide the correct answer
-            const correctAnswer = evalResp.result.correctAnswer || 'A';
-            fbDiv.innerHTML = `<div class="conv-text">❌ Not quite. The correct answer is ${correctAnswer}. ${sanitizeText(feedback)}</div>`;
+            // For incorrect answers, generate a hint automatically
+            const hintPrompt = `The user selected "${choice}" for this question: "${lastAssistant}". This is incorrect. 
+
+Provide a brief explanation of why this answer is wrong and give a helpful hint to guide them toward the correct answer. Keep it educational and encouraging. Do not mention specific answer options (A, B, C, D) or give away the answer. No markdown.`;
+            
+            console.log('Focus Warmup: Generating hint with prompt:', hintPrompt);
+            
+            const hintResp = await chrome.runtime.sendMessage({ 
+              type: 'FW_CHAT', 
+              conversationHistory: currentConversation,
+              mode: 'hint',
+              teachingPrompt: hintPrompt
+            });
+            
+            console.log('Focus Warmup: Hint response:', hintResp);
+            
+            let hint = 'That answer is incorrect. Think about the fundamental concepts involved.';
+            if (hintResp?.ok && hintResp.reply) {
+              hint = hintResp.reply;
+              console.log('Focus Warmup: Using AI-generated hint:', hint);
+              // If the hint contains the answer (mentions A, B, C, D), replace it with a generic hint
+              if (hint.match(/[A-D][\)\.]/) || hint.toLowerCase().includes('correct answer')) {
+                console.log('Focus Warmup: Hint contains answer, using fallback');
+                hint = 'That answer is incorrect. Think about the fundamental concepts involved.';
+              }
+            } else {
+              console.log('Focus Warmup: AI hint generation failed, using fallback');
+            }
+            
+            fbDiv.innerHTML = `<div class="conv-text">❌ Not quite. ${sanitizeText(hint)}</div>`;
           }
           
           conversation.appendChild(fbDiv);
@@ -691,9 +1073,16 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
         const ask = overlay.querySelector('#fw-ask');
         if (ask) ask.style.display = 'flex';
         
-        // Hide MCQ options
+        // Keep MCQ options visible if completed or if wrong answer (for retry)
         const mcqOptions = overlay.querySelector('#fw-mcq-options');
-        if (mcqOptions) mcqOptions.style.display = 'none';
+        if (mcqOptions) {
+          if (isCorrect) {
+            mcqOptions.style.display = 'grid'; // Keep visible for completed MCQ
+            mcqCompleted = true;
+          } else {
+            mcqOptions.style.display = 'grid'; // Keep visible for wrong answers so user can retry
+          }
+        }
         mcqActive = false;
       }
 
@@ -701,20 +1090,21 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
         // Show exit CTA and keep conversation below options
         const exitBtn = overlay?.querySelector('#fw-exit');
         hasAnsweredMCQCorrectly = true;
+        lastCorrectAnswer = choice; // Store the correct answer
         quizCount++;
         
         // Only show exit button after answering correctly
         if (exitBtn) exitBtn.style.display = 'inline-block';
         
-        // Save session when user completes a quiz correctly
+        // Save session when user completes a quiz correctly - ALWAYS save regardless of context preservation
+        console.log('Focus Warmup: MCQ completed correctly, saving session...');
         await saveSession();
       } else {
-        // Offer retry: keep options visible and add a small hint text
+        // Wrong answer - keep options visible for retry
         if (overlay) {
           const helpDiv = overlay.querySelector('#fw-help');
           if (helpDiv) helpDiv.textContent = 'Not quite—try again!';
-          // Re-enable options for retry
-          mcqOptions?.forEach(opt => opt.style.pointerEvents = 'auto');
+          // Options are already enabled for retry in the visual feedback section above
         }
       }
     } else {
@@ -738,7 +1128,7 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
         }
         if (ask) ask.style.display = 'flex';
         
-        // Hide MCQ options
+        // Hide MCQ options on error
         const mcqOptions = overlay.querySelector('#fw-mcq-options');
         if (mcqOptions) mcqOptions.style.display = 'none';
         mcqActive = false;
@@ -750,13 +1140,19 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
     try {
       const host = location.hostname;
       const topic = currentTopic || 'General';
+      
       // Only save if we had any assistant content
       const hasAssistant = currentConversation.some(m => m.role === 'assistant');
-      if (!hasAssistant) return;
+      
+      if (!hasAssistant) {
+        return;
+      }
+      
       // Persist continuity (topic + last concept) for next session
       const lastAssistantMsg = currentConversation.filter(m => m.role === 'assistant').slice(-1)[0]?.content || '';
       lastContinuationConcept = lastAssistantMsg;
       await chrome.storage.local.set({ fwLastTopic: topic, fwLastConcept: lastAssistantMsg });
+      
       await chrome.runtime.sendMessage({
         type: 'FW_COMPLETE_TASK',
         host,
@@ -776,7 +1172,10 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
         type: 'FW_POPUP_COMPLETED',
         host: location.hostname
       });
-    } catch (_) {}
+      
+    } catch (err) {
+      console.error('Focus Warmup: Error saving session:', err);
+    }
   }
 
   async function computeDelayMs() {
@@ -826,7 +1225,7 @@ After the question, list options exactly as A) ..., B) ..., C) ..., D) ... on ne
     if (pendingCheck?.hasPending) {
       // User refreshed without completing the popup - show immediately
       console.log('Focus Warmup: Detected page refresh without popup completion. Showing popup immediately.');
-      currentConversation = [];
+      // Don't reset currentConversation here - let ensureTopic() load it from storage
       teachCount = 0;
       quizCount = 0;
       awaitingMCQ = false;

@@ -2,20 +2,26 @@
 
 let currentStep = 1;
 const totalSteps = 5;
-const tempSettings = {
-  distractionSites: [],
+const DEFAULT_SETTINGS = {
+  distractionSites: [
+    { host: "tiktok.com", enabled: true },
+    { host: "youtube.com", enabled: true },
+    { host: "instagram.com", enabled: false },
+    { host: "pinterest.com", enabled: true },
+    { host: "facebook.com", enabled: true }
+  ],
   topics: [],
+  resources: [],
   timers: {
     startingBreakMinutes: 5,
     decrementMinutes: 1,
-    minimumBreakMinutes: 2,
     graceMode: false,
-    devFast: true,
-    minGateSeconds: 10
-  },
-  passwordLock: { enabled: false, password: "" },
-  resources: []
+    devFast: true
+  }
 };
+
+// Initialize tempSettings with default values
+let tempSettings = { ...DEFAULT_SETTINGS };
 
 function updateProgress() {
   const progress = (currentStep / totalSteps) * 100;
@@ -115,36 +121,51 @@ function prevStep() {
 }
 
 function saveSites() {
+  console.log('Focus Warmup: saveSites called');
   tempSettings.distractionSites = [];
+  
+  // Get checked common sites
   document.querySelectorAll('.site-check:checked').forEach(cb => {
     const host = cb.getAttribute('data-host');
     if (host) {
       tempSettings.distractionSites.push({ host, enabled: true });
+      console.log('Focus Warmup: Added site:', host);
     }
   });
   
+  // Get custom sites
   document.querySelectorAll('#customList li').forEach(li => {
     const host = li.textContent.replace(' ×', '').trim();
     if (host) {
       tempSettings.distractionSites.push({ host, enabled: true });
+      console.log('Focus Warmup: Added custom site:', host);
     }
   });
+  
+  console.log('Focus Warmup: Final sites:', tempSettings.distractionSites);
 }
 
 function saveTopics() {
+  console.log('Focus Warmup: saveTopics called');
   tempSettings.topics = [];
+  
   document.querySelectorAll('#topicList li').forEach(li => {
     const topic = li.textContent.replace(' ×', '').trim();
     if (topic) {
       tempSettings.topics.push(topic);
+      console.log('Focus Warmup: Added topic:', topic);
     }
   });
+  
+  console.log('Focus Warmup: Final topics:', tempSettings.topics);
 }
 
 function saveTimers() {
+  console.log('Focus Warmup: saveTimers called');
   tempSettings.timers.startingBreakMinutes = Number(document.getElementById('startTime').value) || 5;
   tempSettings.timers.decrementMinutes = Number(document.getElementById('decrementTime').value) || 1;
-  tempSettings.timers.minimumBreakMinutes = Number(document.getElementById('minTime').value) || 2;
+  
+  console.log('Focus Warmup: Final timers:', tempSettings.timers);
 }
 
 function addCustomSite() {
@@ -173,7 +194,11 @@ function addCustomSite() {
   const li = document.createElement('li');
   li.innerHTML = `${cleanSite} <span class="remove-btn">×</span>`;
   const removeBtn = li.querySelector('.remove-btn');
-  removeBtn.addEventListener('click', () => li.remove());
+  removeBtn.addEventListener('click', () => {
+    li.remove();
+    // Save sites immediately after removing
+    setTimeout(() => saveSites(), 100);
+  });
   list.appendChild(li);
   input.value = '';
   
@@ -185,6 +210,9 @@ function addCustomSite() {
     li.style.opacity = '1';
     li.style.transform = 'translateY(0)';
   }, 10);
+  
+  // Save sites immediately after adding
+  setTimeout(() => saveSites(), 100);
 }
 
 function addTopic() {
@@ -210,7 +238,11 @@ function addTopic() {
   const li = document.createElement('li');
   li.innerHTML = `${val} <span class="remove-btn">×</span>`;
   const removeBtn = li.querySelector('.remove-btn');
-  removeBtn.addEventListener('click', () => li.remove());
+  removeBtn.addEventListener('click', () => {
+    li.remove();
+    // Save topics immediately after removing
+    setTimeout(() => saveTopics(), 100);
+  });
   list.appendChild(li);
   input.value = '';
   
@@ -222,6 +254,9 @@ function addTopic() {
     li.style.opacity = '1';
     li.style.transform = 'translateY(0)';
   }, 10);
+  
+  // Save topics immediately after adding
+  setTimeout(() => saveTopics(), 100);
 }
 
 function quickAddTopic(topic) {
@@ -234,7 +269,11 @@ function quickAddTopic(topic) {
     const li = document.createElement('li');
     li.innerHTML = `${topic} <span class="remove-btn">×</span>`;
     const removeBtn = li.querySelector('.remove-btn');
-    removeBtn.addEventListener('click', () => li.remove());
+    removeBtn.addEventListener('click', () => {
+      li.remove();
+      // Save topics immediately after removing
+      setTimeout(() => saveTopics(), 100);
+    });
     list.appendChild(li);
     
     // Add a subtle animation
@@ -245,6 +284,9 @@ function quickAddTopic(topic) {
       li.style.opacity = '1';
       li.style.transform = 'translateY(0)';
     }, 10);
+    
+    // Save topics immediately after adding
+    setTimeout(() => saveTopics(), 100);
   } else {
     // Highlight the chip briefly to show it's already added
     const chip = document.querySelector(`[data-topic="${topic}"]`);
@@ -284,9 +326,29 @@ function updateSummary() {
 }
 
 async function finishSetup() {
-  await FWStorage.setSync({ fwSettings: tempSettings });
-  await FWStorage.setSync({ fwMeta: { firstRun: false, onboardingComplete: true } });
-  window.close();
+  console.log('Focus Warmup: finishSetup called');
+  
+  // Save all data one final time before closing
+  console.log('Focus Warmup: Saving all data one final time');
+  saveSites();
+  saveTopics();
+  saveTimers();
+  
+  console.log('Focus Warmup: Final tempSettings:', tempSettings);
+  
+  try {
+    await FWStorage.setSync({ fwSettings: tempSettings });
+    console.log('Focus Warmup: Settings saved successfully');
+    
+    await FWStorage.setSync({ fwMeta: { firstRun: false, onboardingComplete: true } });
+    console.log('Focus Warmup: Meta saved successfully');
+    
+    console.log('Focus Warmup: Closing window');
+    window.close();
+  } catch (error) {
+    console.error('Focus Warmup: Error in finishSetup:', error);
+    alert('Error saving settings: ' + error.message);
+  }
 }
 
 console.log('Focus Warmup: Script loaded, waiting for DOM...');
@@ -482,7 +544,37 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
     
-    if (finishBtn) finishBtn.onclick = finishSetup;
+    if (finishBtn) {
+      console.log('Focus Warmup: Found finish button, setting up click handler');
+      
+      // Test function to verify button works
+      const testFinishSetup = function(e) {
+        console.log('Focus Warmup: Finish button clicked!');
+        console.log('Focus Warmup: Event:', e);
+        console.log('Focus Warmup: Button element:', this);
+        finishSetup();
+      };
+      
+      finishBtn.onclick = testFinishSetup;
+      
+      // Also add addEventListener as backup
+      finishBtn.addEventListener('click', testFinishSetup);
+      
+      // Make sure button is visible and clickable
+      finishBtn.style.cursor = 'pointer';
+      finishBtn.style.pointerEvents = 'auto';
+      finishBtn.disabled = false;
+      
+      console.log('Focus Warmup: Finish button setup complete');
+      console.log('Focus Warmup: Button properties:', {
+        id: finishBtn.id,
+        className: finishBtn.className,
+        disabled: finishBtn.disabled,
+        style: finishBtn.style.cssText
+      });
+    } else {
+      console.error('Focus Warmup: Finish button not found!');
+    }
     
     console.log('Focus Warmup: Navigation buttons set up');
   } catch (error) {
@@ -502,8 +594,32 @@ document.addEventListener('DOMContentLoaded', () => {
     chips.forEach(chip => {
       chip.onclick = function(e) {
         const topic = this.getAttribute('data-topic');
-        if (topic) quickAddTopic(topic);
+        if (topic) {
+          quickAddTopic(topic);
+          // Save topics immediately after adding
+          setTimeout(() => saveTopics(), 100);
+        }
       };
+    });
+    
+    // Set up site checkboxes to save immediately when changed
+    document.querySelectorAll('.site-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        console.log('Focus Warmup: Site checkbox changed, saving sites');
+        setTimeout(() => saveSites(), 100);
+      });
+    });
+    
+    // Set up timer inputs to save immediately when changed
+    const timerInputs = ['startTime', 'decrementTime'];
+    timerInputs.forEach(id => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.addEventListener('change', () => {
+          console.log('Focus Warmup: Timer input changed, saving timers');
+          setTimeout(() => saveTimers(), 100);
+        });
+      }
     });
     
     // Set up upload document button

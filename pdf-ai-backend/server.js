@@ -121,8 +121,143 @@ app.post('/upload', upload.single('pdf'), async (req, res) => {
  */
 app.post('/prompt', async (req, res) => {
   try {
-    const { mode = 'teach', previousPrompt = '', topic = '', conversationHistory = [] } = req.body;
+    const { mode = 'teach', previousPrompt = '', topic = '', conversationHistory = [], quizPrompt = '' } = req.body;
 
+    // For quiz requests, handle even without PDF content
+    if (mode === 'quiz') {
+      if (!openai) {
+        return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+      }
+
+      const systemPrompt = `You create concise MCQs for learning topics.
+
+Rules:
+- Output ONLY plain text (no markdown, no brackets)
+- Exactly one question followed by options in the format: A) ..., B) ..., C) ..., D) ...
+- Keep it brief and answerable quickly
+- Do not add instructions like "Choose A, B, or C"
+- IMPORTANT: Randomize the position of the correct answer - it should NOT always be A
+- Make sure the correct answer appears in different positions (A, B, C, or D) randomly
+- Create 3 plausible distractors and 1 correct answer`;
+
+      const userPrompt = quizPrompt || `Create a multiple choice question about ${topic}. Ensure the correct answer is randomly positioned (A, B, C, or D) and not always in the same place.`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      });
+
+      const task = response.choices[0]?.message?.content || 'Unable to generate quiz question';
+
+      res.json({
+        task,
+        source: 'openai',
+        phase: 'quiz',
+        metadata: {
+          mode: 'quiz',
+          topic,
+          conversationLength: conversationHistory.length
+        }
+      });
+      return;
+    }
+
+    // Handle hint requests (even without PDF content)
+    if (mode === 'hint') {
+      if (!openai) {
+        return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+      }
+
+      // Extract the teaching prompt which contains the hint request
+      const teachingPrompt = req.body.teachingPrompt || '';
+      
+      const systemPrompt = `You are a helpful tutor providing hints for incorrect answers.
+
+Rules:
+- Provide a brief explanation of why the selected answer is wrong (1 sentence)
+- Then give a helpful hint to guide toward the correct answer (1 sentence)
+- Keep it educational and encouraging
+- Do NOT mention specific answer options (A, B, C, D)
+- Do NOT give away the correct answer
+- Output ONLY plain text (no markdown, no brackets)
+- Keep it concise and focused`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: teachingPrompt }
+        ],
+        max_tokens: 100,
+        temperature: 0.7
+      });
+
+      const hint = response.choices[0]?.message?.content || 'That answer is incorrect. Think about the fundamental concepts involved.';
+
+      res.json({
+        task: hint,
+        source: 'openai',
+        phase: 'hint',
+        metadata: {
+          mode: 'hint',
+          topic,
+          conversationLength: conversationHistory.length
+        }
+      });
+      return;
+    }
+
+    // Handle explanation requests (even without PDF content)
+    if (mode === 'explain') {
+      if (!openai) {
+        return res.status(500).json({ error: 'OPENAI_API_KEY not configured' });
+      }
+
+      // Extract the teaching prompt which contains the explanation request
+      const teachingPrompt = req.body.teachingPrompt || '';
+      
+      const systemPrompt = `You are a helpful tutor providing explanations for correct answers.
+
+Rules:
+- Provide a brief explanation of why the selected answer is correct (1-2 sentences)
+- Focus on the educational value and key concepts
+- Keep it concise and informative
+- Do NOT repeat the answer text or say "The correct answer is..."
+- Do NOT mention specific answer options (A, B, C, D)
+- Output ONLY plain text (no markdown, no brackets)
+- Keep it educational and engaging`;
+
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: teachingPrompt }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      });
+
+      const explanation = response.choices[0]?.message?.content || 'Great job! That answer is correct.';
+
+      res.json({
+        task: explanation,
+        source: 'openai',
+        phase: 'explain',
+        metadata: {
+          mode: 'explain',
+          topic,
+          conversationLength: conversationHistory.length
+        }
+      });
+      return;
+    }
+
+    // For non-quiz requests, require PDF content
     if (!global.pdfChunks || global.pdfChunks.length === 0) {
       return res.status(400).json({ error: 'No PDF content available. Please upload a PDF first.' });
     }
@@ -159,13 +294,8 @@ app.post('/prompt', async (req, res) => {
     // Determine query based on mode and conversation state
     let query;
     const hasTeaching = conversationHistory.some(msg => msg.role === 'assistant' && msg.content.length > 50);
-    const shouldQuiz = mode === 'quiz';
 
-    if (shouldQuiz) {
-      query = `create a multiple choice question about ${topic}`;
-    } else {
-      query = `explain a concept from ${topic}`;
-    }
+    query = `explain a concept from ${topic}`;
 
     // Find relevant chunks
     const relevantChunks = await findRelevantChunks(query, global.pdfChunks, 3);
@@ -178,32 +308,7 @@ app.post('/prompt', async (req, res) => {
 
     let systemPrompt, userPrompt;
 
-    if (shouldQuiz) {
-      // QUIZ PHASE
-      systemPrompt = `You create concise MCQs strictly from the PDF content.
-
-Rules:
-- Output ONLY plain text (no markdown, no brackets)
-- Exactly one question followed by options in the format: A) ..., B) ..., C) ..., D) ...
-- Keep it brief and answerable quickly
-- Do not add instructions like "Choose A, B, or C"
-- IMPORTANT: Randomize the position of the correct answer - it should NOT always be A
-- Make sure the correct answer appears in different positions (A, B, C, or D) randomly
-- Create 3 plausible distractors and 1 correct answer`;
-
-      // Use quizPrompt if provided, otherwise use default
-      if (req.body.quizPrompt) {
-        userPrompt = `PDF Content: ${relevantChunks.join('\n\n')}
-
-${req.body.quizPrompt}`;
-      } else {
-        userPrompt = `PDF Content: ${relevantChunks.join('\n\n')}
-
-Create a multiple choice question testing understanding of a key concept from this material. Ensure the correct answer is randomly positioned (A, B, C, or D) and not always in the same place.`;
-      }
-
-    } else {
-      // TEACH PHASE
+        // TEACH PHASE
       systemPrompt = `You are an enthusiastic teaching assistant helping with quick brain activation.
 
 RULES:
@@ -238,7 +343,6 @@ Respond directly to their question using the PDF content. Be helpful and clarify
 Pick one fascinating concept from this material and explain it in an engaging way. Make it come alive for the user! Keep your response to 1-2 sentences, maximum 30 words.`;
         }
       }
-    }
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -255,7 +359,7 @@ Pick one fascinating concept from this material and explain it in an engaging wa
     res.json({
       task,
       source: 'openai',
-      phase: shouldQuiz ? 'quiz' : 'teach',
+      phase: 'teach',
       metadata: {
         chunksUsed: relevantChunks.length,
         mode,
