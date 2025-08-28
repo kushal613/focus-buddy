@@ -214,6 +214,7 @@ h2 {
   background: #f0f9ff;
 }
 
+/* Hide default checkbox */
 .site-check {
   margin-right: 8px;
   width: 18px;
@@ -225,6 +226,8 @@ h2 {
   font-weight: 600;
   color: var(--accent);
 }
+
+
 
 .custom-add {
   display: flex;

@@ -101,23 +101,28 @@ async function loadHistory() {
     try {
       response = await chrome.runtime.sendMessage({ type: 'FW_GET_LEARNING_HISTORY' });
     } catch (err) {
+      console.log('Background script message failed, trying direct storage:', err);
       response = null;
     }
     
     if (response?.ok && Array.isArray(response.history)) {
       allHistory = response.history;
+      console.log('Loaded history from background script:', allHistory.length, 'entries');
     } else {
       // Fallback to direct storage access
       try {
         const storageResult = await chrome.storage.local.get(['fwHistory']);
         allHistory = storageResult.fwHistory || [];
+        console.log('Loaded history from direct storage:', allHistory.length, 'entries');
       } catch (storageErr) {
+        console.log('Storage access failed:', storageErr);
         allHistory = [];
       }
     }
     
     // Ensure allHistory is an array
     if (!Array.isArray(allHistory)) {
+      console.log('History is not an array, initializing empty array');
       allHistory = [];
     }
     
@@ -136,12 +141,38 @@ async function loadHistory() {
     // Show all entries by default (no date filtering)
     filteredHistory = [...allHistory];
     
-    // Update UI
-    await updateStats();
-    await updateChart();
-    updateFilters();
-    updateDateDisplay();
-    renderHistory();
+    console.log('Processed history data:', allHistory.length, 'entries');
+    
+    // Update UI components independently to prevent one failure from breaking everything
+    try {
+      await updateStats();
+    } catch (statsErr) {
+      console.error('Failed to update stats:', statsErr);
+    }
+    
+    try {
+      await updateChart();
+    } catch (chartErr) {
+      console.error('Failed to update chart:', chartErr);
+    }
+    
+    try {
+      updateFilters();
+    } catch (filtersErr) {
+      console.error('Failed to update filters:', filtersErr);
+    }
+    
+    try {
+      updateDateDisplay();
+    } catch (dateErr) {
+      console.error('Failed to update date display:', dateErr);
+    }
+    
+    try {
+      renderHistory();
+    } catch (renderErr) {
+      console.error('Failed to render history:', renderErr);
+    }
     
     // Hide loading state
     loadingState.style.display = 'none';
@@ -156,16 +187,36 @@ async function loadHistory() {
     allHistory = [];
     filteredHistory = [];
     
-    // Update UI with empty state
+    // Update UI with empty state - don't let individual failures break the page
     try {
       await updateStats();
+    } catch (updateErr) {
+      console.error('Failed to update stats in error handler:', updateErr);
+    }
+    
+    try {
       await updateChart();
     } catch (updateErr) {
-      console.error('Failed to update UI:', updateErr);
+      console.error('Failed to update chart in error handler:', updateErr);
     }
-    updateFilters();
-    updateDateDisplay();
-    renderHistory();
+    
+    try {
+      updateFilters();
+    } catch (updateErr) {
+      console.error('Failed to update filters in error handler:', updateErr);
+    }
+    
+    try {
+      updateDateDisplay();
+    } catch (updateErr) {
+      console.error('Failed to update date display in error handler:', updateErr);
+    }
+    
+    try {
+      renderHistory();
+    } catch (updateErr) {
+      console.error('Failed to render history in error handler:', updateErr);
+    }
     
     showError('Failed to load learning history. Please try refreshing the page.');
   }
@@ -228,40 +279,11 @@ async function updateStats() {
     ).length;
     document.getElementById('tasksCompleted').textContent = tasksCompleted;
     
-    // Calculate average focus time based on actual site visit data
+    // Calculate average focus time - simplified to avoid dependency on site visits
     let avgFocusTime = '0m';
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'FW_GET_SITE_VISITS' });
-      if (response?.ok && response.siteVisits) {
-        let totalDuration = 0;
-        let visitCount = 0;
-        
-        Object.values(response.siteVisits).forEach(siteData => {
-          if (siteData.visits) {
-            siteData.visits.forEach(visit => {
-              if (visit.duration) {
-                totalDuration += visit.duration;
-                visitCount++;
-              }
-            });
-          }
-        });
-        
-        if (visitCount > 0) {
-          const avgMs = totalDuration / visitCount;
-          const avgMinutes = Math.round(avgMs / (1000 * 60));
-          avgFocusTime = avgMinutes > 0 ? `${avgMinutes}m` : '<1m';
-        } else {
-          // Fallback to estimate based on sessions
-          avgFocusTime = allEntries.length > 0 ? '5m' : '0m';
-        }
-      } else {
-        // Fallback to estimate based on sessions
-        avgFocusTime = allEntries.length > 0 ? '5m' : '0m';
-      }
-    } catch (err) {
-      // Fallback to estimate based on sessions
-      avgFocusTime = allEntries.length > 0 ? '5m' : '0m';
+    if (allEntries.length > 0) {
+      // Simple estimate: 5 minutes per session
+      avgFocusTime = '5m';
     }
     
     document.getElementById('avgFocusTime').textContent = avgFocusTime;
@@ -285,40 +307,44 @@ async function updateChart() {
       siteChart.destroy();
     }
     
-    // Get site visit data for real time tracking
-    const response = await chrome.runtime.sendMessage({ type: 'FW_GET_SITE_VISITS' });
-    let siteData = {};
-    
-    if (response?.ok && response.siteVisits) {
-      // Calculate total time spent on each site
-      Object.entries(response.siteVisits).forEach(([host, siteVisitData]) => {
-        if (siteVisitData.visits) {
-          let totalTime = 0;
-          siteVisitData.visits.forEach(visit => {
-            if (visit.duration) {
-              totalTime += visit.duration;
+    // Get actual time spent data from site visits
+    let siteTimeData = {};
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'FW_GET_SITE_VISITS' });
+      console.log('Focus Warmup: Site visits response:', response);
+      if (response?.ok && response.siteVisits) {
+        // Calculate total time spent on each site
+        Object.entries(response.siteVisits).forEach(([host, siteData]) => {
+          console.log('Focus Warmup: Processing site data for', host, ':', siteData);
+          if (siteData.visits && Array.isArray(siteData.visits)) {
+            const totalTime = siteData.visits.reduce((sum, visit) => {
+              return sum + (visit.duration || 0);
+            }, 0);
+            if (totalTime > 0) {
+              siteTimeData[host] = totalTime;
+              console.log('Focus Warmup: Added time data for', host, ':', totalTime, 'ms');
             }
-          });
-          if (totalTime > 0) {
-            siteData[host] = totalTime / (1000 * 60); // Convert to minutes
           }
-        }
-      });
+        });
+      }
+    } catch (err) {
+      console.log('Could not fetch site visit data, using session counts as fallback:', err);
     }
     
-    // Fallback to session counts if no time data
-    if (Object.keys(siteData).length === 0) {
+    console.log('Focus Warmup: Final site time data:', siteTimeData);
+    
+    // If no time data available, fall back to session counts
+    if (Object.keys(siteTimeData).length === 0) {
       allHistory.forEach(entry => {
         const site = entry.site;
-        siteData[site] = (siteData[site] || 0) + 1;
+        siteTimeData[site] = (siteTimeData[site] || 0) + 1;
       });
     }
     
-    const sites = Object.keys(siteData);
-    const values = Object.values(siteData);
+    const sites = Object.keys(siteTimeData);
+    const values = Object.values(siteTimeData);
     
     if (sites.length === 0) {
-      // Show empty state
       ctx.style.display = 'none';
       document.querySelector('.chart-section').innerHTML = `
         <h3>Time Spent on Distracting Sites</h3>
@@ -332,7 +358,9 @@ async function updateChart() {
     
     ctx.style.display = 'block';
     
-    // Create chart
+    // Check if we have time data (milliseconds) or session counts
+    const hasTimeData = values.some(v => v > 1000); // If any value > 1 second, it's time data
+    
     siteChart = new Chart(ctx, {
       type: 'doughnut',
       data: {
@@ -371,15 +399,14 @@ async function updateChart() {
               label: function(context) {
                 const site = context.label;
                 const value = context.parsed;
-                const total = values.reduce((a, b) => a + b, 0);
+                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
                 const percentage = ((value / total) * 100).toFixed(1);
                 
-                // Check if this is time data (has decimals) or session count data
-                if (value % 1 !== 0) {
-                  // Time data - show in minutes
-                  return `${site}: ${value.toFixed(1)}m (${percentage}%)`;
+                if (hasTimeData) {
+                  // Convert milliseconds to minutes
+                  const minutes = Math.round(value / (1000 * 60));
+                  return `${site}: ${minutes}m (${percentage}%)`;
                 } else {
-                  // Session count data
                   return `${site}: ${value} sessions (${percentage}%)`;
                 }
               }
@@ -390,8 +417,11 @@ async function updateChart() {
     });
   } catch (err) {
     console.error('Error updating chart:', err);
-    // Fallback to simple session count chart
-    updateSimpleChart();
+    // Hide chart on error
+    const ctx = document.getElementById('siteChart');
+    if (ctx) {
+      ctx.style.display = 'none';
+    }
   }
 }
 
@@ -506,48 +536,49 @@ function updateDateDisplay() {
     currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+// Calendar Functions
+function toggleCalendar() {
+  const calendar = document.getElementById('calendar');
+  if (calendar.style.display === 'none' || calendar.style.display === '') {
+    calendar.style.display = 'block';
+    renderCalendar();
+  } else {
+    calendar.style.display = 'none';
+  }
+}
+
 function renderCalendar() {
-  const calendarDays = document.getElementById('calendarDays');
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
+  const calendar = document.getElementById('calendar');
+  const monthYear = document.getElementById('monthYear');
   
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
+  monthYear.textContent = currentMonth.toLocaleDateString('en-US', { 
+    month: 'long', 
+    year: 'numeric' 
+  });
+  
+  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+  const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
   const startDate = new Date(firstDay);
   startDate.setDate(startDate.getDate() - firstDay.getDay());
   
   let html = '';
-  
   for (let i = 0; i < 42; i++) {
     const date = new Date(startDate);
     date.setDate(startDate.getDate() + i);
     
-    const isCurrentMonth = date.getMonth() === month;
-    const isToday = isSameDay(date, new Date());
+    const isCurrentMonth = date.getMonth() === currentMonth.getMonth();
     const isSelected = isSameDay(date, selectedDate);
     const hasHistory = allHistory.some(entry => isSameDay(new Date(entry.timestamp), date));
     
     let className = 'calendar-day';
     if (!isCurrentMonth) className += ' other-month';
-    if (isToday) className += ' today';
     if (isSelected) className += ' selected';
     if (hasHistory) className += ' has-history';
     
     html += `<div class="${className}" data-date="${date.toISOString().split('T')[0]}">${date.getDate()}</div>`;
   }
   
-  calendarDays.innerHTML = html;
-}
-
-function toggleCalendar() {
-  const calendar = document.getElementById('calendar');
-  const isVisible = calendar.style.display !== 'none';
-  
-  if (!isVisible) {
-    renderCalendar();
-  }
-  
-  calendar.style.display = isVisible ? 'none' : 'block';
+  calendar.querySelector('.calendar-grid').innerHTML = html;
 }
 
 // Rendering Functions
@@ -577,7 +608,7 @@ function renderHistory(entries = filteredHistory) {
         <h3>No learning history for this date</h3>
         <p>You have ${allHistory.length} learning entries, but none for ${selectedDate.toLocaleDateString()}.</p>
         <p style="margin-top: 16px; font-size: 13px; color: var(--muted);">
-          💡 Try clicking "Show All Entries" to see all your learning history
+          💡 Try selecting a different date or check your learning history
         </p>
       `;
     }
@@ -624,8 +655,12 @@ function renderHistory(entries = filteredHistory) {
       const previewLength = 200;
       const hasMore = conversation.length > 2;
       
-      // Only show entries with meaningful conversations
-      if (conversation.length >= 2) {
+      // Show all entries with any meaningful content (assistant or user messages)
+      const hasAssistant = conversation.some(msg => msg.role === 'assistant');
+      const hasUser = conversation.some(msg => msg.role === 'user');
+      const hasMeaningfulContent = hasAssistant || hasUser;
+      
+      if (hasMeaningfulContent) {
         const preview = conversation.slice(0, 2).map(msg => 
           `<div class="conv-message ${msg.role}">
             <div class="conv-text">${msg.content.substring(0, previewLength)}${msg.content.length > previewLength ? '...' : ''}</div>
@@ -705,7 +740,7 @@ async function clearHistory() {
   }
   
   try {
-    await FWStorage.clearHistory();
+    await chrome.storage.local.remove(['fwHistory']);
     allHistory = [];
     filteredHistory = [];
     
@@ -767,8 +802,34 @@ function toggleConversation(timestamp) {
   }
 }
 
+// Debug function to test data loading
+async function testDataLoading() {
+  console.log('=== Testing Data Loading ===');
+  
+  // Test direct storage access
+  try {
+    const storageResult = await chrome.storage.local.get(['fwHistory']);
+    console.log('Direct storage result:', storageResult);
+    console.log('History array:', storageResult.fwHistory);
+    console.log('History length:', storageResult.fwHistory?.length || 0);
+  } catch (err) {
+    console.error('Direct storage test failed:', err);
+  }
+  
+  // Test background script message
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'FW_GET_LEARNING_HISTORY' });
+    console.log('Background script response:', response);
+  } catch (err) {
+    console.error('Background script test failed:', err);
+  }
+}
+
 // Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
+  // Test data loading first
+  testDataLoading();
+  
   // Load initial data
   loadHistory();
   

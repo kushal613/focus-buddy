@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Quiz Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .test-info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-steps {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #2196F3;
+        }
+        .test-steps ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .test-steps li {
+            margin: 8px 0;
+        }
+        .status {
+            background: #f0f8e8;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h1>🧪 Test: Quiz Question Persistence Fix</h1>
+        <p>This page tests the fix for the issue where the quiz question disappears when "Learn More" is clicked after answering a quiz.</p>
+    </div>
+
+    <div class="test-steps">
+        <h3>Test Steps:</h3>
+        <ol>
+            <li>Wait for the Focus Warmup popup to appear (should appear after a few seconds)</li>
+            <li>Click "Quiz Me" to get a question</li>
+            <li>Answer the question (correctly or incorrectly)</li>
+            <li>Click "Learn More"</li>
+            <li><strong>Expected Result:</strong> The orange question box should remain visible in the chat</li>
+            <li><strong>Previous Bug:</strong> The question would disappear when "Learn More" was clicked</li>
+        </ol>
+    </div>
+
+    <div class="status">
+        <strong>Status:</strong> Ready for testing. The Focus Warmup extension should trigger on this page.
+    </div>
+
+    <script>
+        // Add some content to make the page more realistic
+        document.body.innerHTML += `
+            <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 8px;">
+                <h2>Sample Content</h2>
+                <p>This is some sample content to make the page more realistic for testing the Focus Warmup extension.</p>
+                <p>The extension should detect this as a distraction site and show the popup after a delay.</p>
+            </div>
+        `;
+    </script>
+</body>
+</html>

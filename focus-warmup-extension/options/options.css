@@ -203,9 +203,22 @@ h3 {
   cursor: pointer;
 }
 
+/* Text styling for checked state */
 .checkbox-grid input[type="checkbox"]:checked + span {
   font-weight: 600;
   color: var(--accent);
+}
+
+/* Focus state */
+.checkbox-grid input[type="checkbox"]:focus + span::before {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Hover effect on checkbox */
+.checkbox-grid label:hover input[type="checkbox"] + span::before {
+  border-color: var(--primary);
+  background: #f8fafc;
 }
 .custom-row.is-tight { gap: 10px; }
 

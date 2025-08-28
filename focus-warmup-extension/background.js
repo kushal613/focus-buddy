@@ -487,12 +487,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const evaluationPrompt = `I asked this multiple choice question: "${message.question}"
 
 The user answered: "${message.answer}"
+The correct answer is: "${message.correctAnswer}"
 
-Please evaluate if this answer is correct. Respond with a JSON object like this:
+Please evaluate if the user's answer is correct. Respond with a JSON object like this:
 {
   "correct": true/false,
   "feedback": "brief feedback explaining why correct or incorrect",
-  "correctAnswer": "A" (the letter of the correct answer)
+  "correctAnswer": "${message.correctAnswer}"
 }
 
 Only respond with the JSON object, no other text.`;
@@ -509,6 +510,21 @@ Only respond with the JSON object, no other text.`;
         if (resp.ok) {
           const data = await resp.json();
           console.log('Focus Warmup: Raw evaluation response:', data);
+          
+          // If we have the correct answer, we can do a simple comparison first
+          if (message.correctAnswer && message.correctAnswer !== 'null' && message.correctAnswer !== null) {
+            const isCorrect = message.answer === message.correctAnswer;
+            const feedback = isCorrect ? "Correct! Well done." : `Incorrect. The correct answer is ${message.correctAnswer}.`;
+            
+            sendResponse({ ok: true, 
+              result: { 
+                correct: isCorrect, 
+                feedback: feedback, 
+                correctAnswer: message.correctAnswer 
+              } 
+            });
+            return;
+          }
           
           try {
             // Try to parse the response as JSON

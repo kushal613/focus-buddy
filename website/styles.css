@@ -250,6 +250,9 @@ p {
 .demo-actions {
   display: flex;
   gap: 8px;
+  padding: 16px 20px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 
 .demo-btn {
@@ -661,7 +664,9 @@ p {
   .install-benefits {
     grid-template-columns: 1fr;
   }
-  
+}
+
+@media (max-width: 480px) {
   .container {
     padding: 0 16px;
   }
@@ -673,9 +678,7 @@ p {
   .problem, .science, .how-it-works, .features, .install {
     padding: 60px 0;
   }
-}
-
-@media (max-width: 480px) {
+  
   .hero-title {
     font-size: 2rem;
   }
